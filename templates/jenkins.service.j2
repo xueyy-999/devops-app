@@ -1,0 +1,21 @@
+[Unit]
+Description=Jenkins Automation Server
+After=network.target
+
+[Service]
+Type=simple
+User=jenkins
+Group=jenkins
+Environment="JENKINS_HOME=/var/lib/jenkins"
+ExecStart=/usr/bin/java -Djava.awt.headless=true -jar {{ jenkins_war_path }} --httpPort={{ jenkins_port }}
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=control-group
+Restart=on-failure
+RestartSec=42
+TimeoutStartSec=0
+TimeoutStopSec=5min
+LimitNOFILE=8192
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

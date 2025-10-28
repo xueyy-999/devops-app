@@ -1,0 +1,72 @@
+---
+# 单节点部署配置 - 适用于单机测试环境
+all:
+  children:
+    # 单节点部署 - 所有服务部署在同一台机器上
+    single_node:
+      hosts:
+        devops-node:
+          ansible_host: 192.168.76.141
+          ansible_user: root
+          ansible_connection: local
+          ansible_python_interpreter: /usr/bin/python3
+
+    control_nodes:
+      hosts:
+        devops-node: {}
+
+    compute_nodes:
+      hosts:
+        devops-node: {}
+
+    cicd_nodes:
+      hosts:
+        devops-node: {}
+
+    monitoring_nodes:
+      hosts:
+        devops-node: {}
+
+  # 全局变量
+  vars:
+    # 网络配置
+    cluster_network: "192.168.76.0/24"
+    service_network: "10.96.0.0/12"
+    pod_network: "10.244.0.0/16"
+    
+    # Kubernetes配置
+    kubernetes_version: "1.28.0"
+    containerd_version: "1.7.0"
+    cni_version: "1.3.0"
+    
+    # 镜像仓库配置
+    registry_url: "192.168.76.141"
+    registry_port: 5000
+    
+    cluster_name: "devops-cluster"
+
+    # 监控配置
+    prometheus_port: 9090
+    grafana_port: 3000
+    alertmanager_port: 9093
+    
+    # CI/CD配置
+    gitlab_port: 80  # 外部Nginx反代端口（GitLab内置Nginx在8081）
+    gitlab_internal_port: 8081  # GitLab内置Nginx端口
+    jenkins_port: 8080
+    harbor_port: 80  # 外部Nginx反代端口（Harbor实际在5000）
+    harbor_internal_port: 5000  # Harbor实际端口
+    
+    # 应用配置
+    app_namespace: "production"
+    app_name: "web-app"
+    app_replicas: 1
+    app_domain: "192.168.76.141"
+    
+    # 安全配置
+    enable_tls: false
+    cert_manager_version: "v1.13.0"
+    
+    # 存储配置
+    storage_class: "local-storage"
+    storage_size: "50Gi"

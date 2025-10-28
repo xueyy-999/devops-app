@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: {{ monitoring_namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      hostNetwork: true
+      hostPID: true
+      containers:
+      - name: node-exporter
+        image: prom/node-exporter:latest
+        args:
+          - '--path.procfs=/host/proc'
+          - '--path.sysfs=/host/sys'
+          - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+        ports:
+        - containerPort: {{ node_exporter_port }}
+        volumeMounts:
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+      volumes:
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  namespace: {{ monitoring_namespace }}
+spec:
+  selector:
+    app: node-exporter
+  ports:
+  - port: {{ node_exporter_port }}
+    targetPort: {{ node_exporter_port }}
+  type: NodePort

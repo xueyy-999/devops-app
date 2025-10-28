@@ -1,0 +1,149 @@
+# Ansible Inventory 配置示例
+# 复制此文件为 hosts.yml 并根据实际环境修改
+
+all:
+  vars:
+    # SSH 连接配置
+    ansible_user: root
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
+    ansible_python_interpreter: /usr/bin/python3
+    
+    # 系统配置
+    timezone: "Asia/Shanghai"
+    ntp_servers:
+      - "ntp.aliyun.com"
+      - "time.windows.com"
+    
+    # 网络配置
+    cluster_network: "192.168.1.0/24"
+    service_network: "10.96.0.0/12"
+    pod_network: "10.244.0.0/16"
+    dns_servers:
+      - "8.8.8.8"
+      - "8.8.4.4"
+    
+    # Kubernetes 配置
+    k8s_version: "1.28.0"
+    cni_plugin: "flannel"
+    
+    # Docker 配置
+    docker_version: "latest"
+    docker_data_dir: "/var/lib/docker"
+    
+    # 监控配置
+    prometheus_port: 9090
+    grafana_port: 3000
+    alertmanager_port: 9093
+    
+    # CI/CD 配置
+    gitlab_port: 80
+    jenkins_port: 8080
+    harbor_port: 80
+    
+    # TLS 配置
+    enable_tls: false  # 禁用TLS，避免证书问题
+    
+  children:
+    # ========================================
+    # Kubernetes 控制平面节点
+    # ========================================
+    control_nodes:
+      hosts:
+        master-01:
+          ansible_host: 192.168.1.10
+          node_ip: 192.168.1.10
+          node_name: master-01
+        # master-02:
+        #   ansible_host: 192.168.1.11
+        #   node_ip: 192.168.1.11
+        #   node_name: master-02
+        # master-03:
+        #   ansible_host: 192.168.1.12
+        #   node_ip: 192.168.1.12
+        #   node_name: master-03
+      vars:
+        node_role: master
+        node_labels:
+          node-role.kubernetes.io/control-plane: ""
+    
+    # ========================================
+    # Kubernetes 工作节点
+    # ========================================
+    compute_nodes:
+      hosts:
+        worker-01:
+          ansible_host: 192.168.1.20
+          node_ip: 192.168.1.20
+          node_name: worker-01
+        worker-02:
+          ansible_host: 192.168.1.21
+          node_ip: 192.168.1.21
+          node_name: worker-02
+        worker-03:
+          ansible_host: 192.168.1.22
+          node_ip: 192.168.1.22
+          node_name: worker-03
+      vars:
+        node_role: worker
+        node_labels:
+          node-role.kubernetes.io/worker: ""
+    
+    # ========================================
+    # 存储节点（可选）
+    # ========================================
+    storage_nodes:
+      hosts:
+        # storage-01:
+        #   ansible_host: 192.168.1.30
+        #   node_ip: 192.168.1.30
+        #   node_name: storage-01
+        #   storage_type: "local"
+        #   storage_path: "/data/storage"
+      vars:
+        node_role: storage
+    
+    # ========================================
+    # 监控节点
+    # ========================================
+    monitoring_nodes:
+      hosts:
+        monitor-01:
+          ansible_host: 192.168.1.40
+          node_ip: 192.168.1.40
+          node_name: monitor-01
+      vars:
+        prometheus_retention: "30d"
+        grafana_admin_user: "admin"
+        grafana_admin_password: "admin123"  # 请修改默认密码
+    
+    # ========================================
+    # CI/CD 节点
+    # ========================================
+    cicd_nodes:
+      hosts:
+        cicd-01:
+          ansible_host: 192.168.1.50
+          node_ip: 192.168.1.50
+          node_name: cicd-01
+      vars:
+        gitlab_root_password: "password123"  # 请修改默认密码
+        jenkins_admin_user: "admin"
+        jenkins_admin_password: "admin123"  # 请修改默认密码
+        harbor_admin_password: "Harbor12345"  # 请修改默认密码
+
+# ========================================
+# 节点组合（用于批量操作）
+# ========================================
+# all_k8s_nodes:
+#   children:
+#     control_nodes:
+#     compute_nodes:
+# 
+# all_infrastructure:
+#   children:
+#     control_nodes:
+#     compute_nodes:
+#     storage_nodes:
+#     monitoring_nodes:
+#     cicd_nodes:
+

@@ -1,0 +1,21 @@
+[Unit]
+Description=Alertmanager
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=prometheus
+Group=prometheus
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStart=/usr/local/bin/alertmanager \
+  --config.file=/etc/alertmanager/alertmanager.yml \
+  --storage.path=/var/lib/alertmanager \
+  --web.external-url=http://{{ ansible_default_ipv4.address }}:{{ alertmanager_port }} \
+  --web.listen-address=0.0.0.0:{{ alertmanager_port }} \
+  --log.level=info
+
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

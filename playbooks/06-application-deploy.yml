@@ -1,0 +1,193 @@
+---
+# 示例应用部署 - 高可用Web应用
+- name: 部署示例应用
+  hosts: control_nodes
+  become: yes
+  gather_facts: yes
+  vars:
+    # 避免自引用递归，给出稳定默认值（可用 inventory 或 -e 覆盖）
+    app_namespace: "production"
+    app_name: "web-app"
+    app_image: "nginx:latest"
+    app_replicas: 1
+    app_port: 8080
+    app_domain: "{{ ansible_default_ipv4.address }}"
+    enable_tls: false  # 禁用TLS，避免证书问题
+
+  tasks:
+    # 1. 创建应用命名空间
+    - name: 创建应用命名空间
+      kubernetes.core.k8s:
+        name: "{{ app_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    # 2. 部署应用配置
+    - name: 部署应用ConfigMap
+      template:
+        src: ../templates/app-configmap.yaml.j2
+        dest: /tmp/app-configmap.yaml
+        mode: '0644'
+
+    - name: 应用ConfigMap配置
+      shell: kubectl apply -f /tmp/app-configmap.yaml
+
+    # 3. 部署应用Secret
+    - name: 部署应用Secret
+      template:
+        src: ../templates/app-secret.yaml.j2
+        dest: /tmp/app-secret.yaml
+        mode: '0644'
+
+    - name: 应用Secret配置
+      shell: kubectl apply -f /tmp/app-secret.yaml
+
+    # 4. 部署应用Deployment
+    - name: 部署应用Deployment
+      template:
+        src: ../templates/app-deployment.yaml.j2
+        dest: /tmp/app-deployment.yaml
+        mode: '0644'
+
+    - name: 应用Deployment配置
+      shell: kubectl apply -f /tmp/app-deployment.yaml
+
+    # 5. 部署应用Service
+    - name: 部署应用Service
+      template:
+        src: ../templates/app-service.yaml.j2
+        dest: /tmp/app-service.yaml
+        mode: '0644'
+
+    - name: 应用Service配置
+      shell: kubectl apply -f /tmp/app-service.yaml
+
+    # 6. 部署应用Ingress
+    - name: 部署应用Ingress
+      template:
+        src: ../templates/app-ingress.yaml.j2
+        dest: /tmp/app-ingress.yaml
+        mode: '0644'
+
+    - name: 应用Ingress配置
+      shell: kubectl apply -f /tmp/app-ingress.yaml
+
+    # 7. 部署HPA
+    - name: 部署HPA
+      template:
+        src: ../templates/app-hpa.yaml.j2
+        dest: /tmp/app-hpa.yaml
+        mode: '0644'
+
+    - name: 应用HPA配置
+      shell: kubectl apply -f /tmp/app-hpa.yaml
+
+    # 8. 部署PDB
+    - name: 部署PDB
+      template:
+        src: ../templates/app-pdb.yaml.j2
+        dest: /tmp/app-pdb.yaml
+        mode: '0644'
+
+    - name: 应用PDB配置
+      shell: kubectl apply -f /tmp/app-pdb.yaml
+
+    # 9. 等待应用就绪
+    - name: 等待应用就绪
+      shell: kubectl get pods -n {{ app_namespace }} -l app={{ app_name }}
+      register: app_pods
+      retries: 30
+      delay: 10
+      until: "'Running' in app_pods.stdout"
+
+    - name: 显示应用Pod状态
+      debug:
+        msg: "{{ app_pods.stdout_lines }}"
+
+    # 10. 验证应用部署
+    - name: 验证应用部署
+      shell: kubectl get all -n {{ app_namespace }}
+      register: app_status
+
+    - name: 显示应用状态
+      debug:
+        msg: "{{ app_status.stdout_lines }}"
+
+  post_tasks:
+    - name: 显示应用访问信息
+      debug:
+        msg:
+          - "应用部署完成"
+          - "应用名称: {{ app_name }}"
+          - "命名空间: {{ app_namespace }}"
+          - "副本数: {{ app_replicas }}"
+          - "访问地址: http://{{ app_domain }}"
+          - "检查状态: kubectl get all -n {{ app_namespace }}"
+
+- name: 部署AI扩缩容模块
+  hosts: control_nodes
+  become: yes
+  gather_facts: yes
+  vars:
+    ai_namespace: "ai-scaling"
+    ai_image: "python:3.9-slim"
+
+  tasks:
+    # 1. 创建AI命名空间
+    - name: 创建AI命名空间
+      kubernetes.core.k8s:
+        name: "{{ ai_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    # 2. 部署AI扩缩容配置
+    - name: 部署AI扩缩容配置
+      template:
+        src: ../templates/ai-scaler.yaml.j2
+        dest: /tmp/ai-scaler.yaml
+        mode: '0644'
+
+    - name: 应用AI扩缩容配置
+      shell: kubectl apply -f /tmp/ai-scaler.yaml
+
+    # 3. 部署AI扩缩容服务
+    - name: 部署AI扩缩容服务
+      template:
+        src: ../templates/ai-scaler-service.yaml.j2
+        dest: /tmp/ai-scaler-service.yaml
+        mode: '0644'
+
+    - name: 应用AI扩缩容服务配置
+      shell: kubectl apply -f /tmp/ai-scaler-service.yaml
+
+    # 4. 部署AI扩缩容ConfigMap
+    - name: 部署AI扩缩容ConfigMap
+      template:
+        src: ../templates/ai-scaler-config.yaml.j2
+        dest: /tmp/ai-scaler-config.yaml
+        mode: '0644'
+
+    - name: 应用AI扩缩容ConfigMap配置
+      shell: kubectl apply -f /tmp/ai-scaler-config.yaml
+
+    # 5. 等待AI扩缩容就绪
+    - name: 等待AI扩缩容就绪
+      shell: kubectl get pods -n {{ ai_namespace }} -l app=ai-scaler
+      register: ai_pods
+      retries: 30
+      delay: 10
+      until: "'Running' in ai_pods.stdout"
+
+    - name: 显示AI扩缩容Pod状态
+      debug:
+        msg: "{{ ai_pods.stdout_lines }}"
+
+  post_tasks:
+    - name: 显示AI扩缩容信息
+      debug:
+        msg:
+          - "AI扩缩容模块部署完成"
+          - "命名空间: {{ ai_namespace }}"
+          - "检查状态: kubectl get all -n {{ ai_namespace }}"

@@ -1,0 +1,113 @@
+# Ansible Inventory 单节点配置示例
+# 适用于单机测试环境
+# 复制此文件为 single-node.yml 并根据实际环境修改
+
+all:
+  vars:
+    # 使用本地连接
+    ansible_connection: local
+    ansible_python_interpreter: /usr/bin/python3
+    
+    # 系统配置
+    timezone: "Asia/Shanghai"
+    ntp_servers:
+      - "ntp.aliyun.com"
+      - "time.windows.com"
+    
+    # 网络配置（根据实际网络修改）
+    cluster_network: "192.168.76.0/24"
+    service_network: "10.96.0.0/12"
+    pod_network: "10.244.0.0/16"
+    dns_servers:
+      - "8.8.8.8"
+      - "8.8.4.4"
+    
+    # Kubernetes 配置
+    k8s_version: "1.28.0"
+    cni_plugin: "flannel"
+    
+    # Docker 配置
+    docker_version: "latest"
+    docker_data_dir: "/var/lib/docker"
+    
+    # 监控配置
+    prometheus_port: 9090
+    grafana_port: 3000
+    alertmanager_port: 9093
+    grafana_admin_user: "admin"
+    grafana_admin_password: "admin123"  # 请修改默认密码
+    
+    # CI/CD 配置
+    gitlab_port: 80
+    jenkins_port: 8080
+    harbor_port: 80
+    gitlab_root_password: "password123"  # 请修改默认密码
+    jenkins_admin_user: "admin"
+    jenkins_admin_password: "admin123"  # 请修改默认密码
+    harbor_admin_password: "Harbor12345"  # 请修改默认密码
+    
+    # TLS 配置
+    enable_tls: false  # 禁用TLS，避免证书问题
+    
+    # 单节点特定配置
+    single_node_mode: true
+    master_node_schedulable: true  # 允许 master 节点调度 Pod
+    
+  hosts:
+    localhost:
+      ansible_host: 127.0.0.1
+      # 修改为实际的节点 IP 地址
+      node_ip: 192.168.76.141
+      node_name: localhost
+      node_role: master
+      # 单节点模式下，节点需要承担所有角色
+      node_labels:
+        node-role.kubernetes.io/control-plane: ""
+        node-role.kubernetes.io/worker: ""
+
+# ========================================
+# 配置说明
+# ========================================
+# 
+# 1. node_ip: 修改为你的实际 IP 地址（通过 ip a 查看）
+# 
+# 2. 网络配置:
+#    - cluster_network: 节点所在的网络
+#    - service_network: Kubernetes Service 使用的网络（不要与主机网络冲突）
+#    - pod_network: Kubernetes Pod 使用的网络（不要与主机网络冲突）
+# 
+# 3. 安全配置:
+#    - 所有默认密码都需要修改
+#    - 建议使用强密码（至少 12 位，包含大小写字母、数字和特殊字符）
+# 
+# 4. 资源要求:
+#    - 最低 8GB 内存
+#    - 最低 4 核 CPU
+#    - 最低 100GB 磁盘空间
+# 
+# 5. 系统要求:
+#    - CentOS 9 / Rocky Linux 9
+#    - 禁用 SELinux 或设置为 permissive
+#    - 禁用 swap
+#    - 确保防火墙配置正确
+# 
+# ========================================
+# 快速开始
+# ========================================
+# 
+# 1. 复制示例文件:
+#    cp inventory/single-node.yml.example inventory/single-node.yml
+# 
+# 2. 修改配置:
+#    vim inventory/single-node.yml
+#    # 至少需要修改 node_ip 和所有密码
+# 
+# 3. 执行部署:
+#    ./deploy-single.sh
+# 
+# 4. 验证部署:
+#    kubectl get nodes
+#    kubectl get pods --all-namespaces
+# 
+# ========================================
+

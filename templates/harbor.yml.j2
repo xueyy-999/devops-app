@@ -1,0 +1,57 @@
+hostname: {{ ansible_default_ipv4.address }}
+
+http:
+  port: {{ harbor_port }}
+
+{% if harbor_enable_https | default(false) %}
+https:
+  port: 443
+  certificate: /etc/harbor/ssl/harbor.crt
+  private_key: /etc/harbor/ssl/harbor.key
+{% endif %}
+
+harbor_admin_password: {{ harbor_admin_password }}
+
+database:
+  password: root123
+  max_idle_conns: 50
+  max_open_conns: 1000
+  conn_max_lifetime: 5m
+
+data_volume: /data
+
+trivy:
+  ignore_unfixed: false
+  skip_update: false
+  offline_scan: false
+  security_check: vuln
+  insecure: false
+
+jobservice:
+  max_job_workers: 10
+  logger_sweeper_duration: 1h
+
+notification:
+  webhook_job_max_retry: 10
+  webhook_job_http_client_timeout: 5s
+
+chart:
+  absolute_url: disabled
+
+log:
+  level: info
+  local:
+    rotate_count: 50
+    rotate_size: 200M
+    location: /var/log/harbor
+
+_version: 2.8.0
+
+proxy:
+  http_proxy:
+  https_proxy:
+  no_proxy:
+  components:
+    - core
+    - jobservice
+    - trivy

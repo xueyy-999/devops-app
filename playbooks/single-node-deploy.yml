@@ -1,0 +1,95 @@
+---
+# 单节点云原生DevOps平台部署
+- name: 部署单节点云原生DevOps平台
+  hosts: single_node
+  become: yes
+  gather_facts: yes
+  vars:
+    # 部署配置
+    deployment_mode: "single"
+    skip_verification: false
+    
+    # 系统配置
+    timezone: "Asia/Shanghai"
+    ntp_servers:
+      - "ntp.aliyun.com"
+      - "time.windows.com"
+    
+    # 网络配置
+    cluster_network: "192.168.76.0/24"
+    service_network: "10.96.0.0/12"
+    pod_network: "10.244.0.0/16"
+    
+    # 应用配置
+    app_namespace: "production"
+    app_name: "web-app"
+    app_replicas: 1
+    app_domain: "192.168.76.141"
+
+  tasks:
+    # 1. 基础环境配置
+    - name: 配置基础环境
+      include: playbooks/01-common-setup.yml
+      tags: [setup, common]
+
+    # 2. Docker安装配置
+    - name: 安装Docker
+      include: playbooks/02-docker-setup.yml
+      tags: [setup, docker]
+
+    # 3. Kubernetes集群部署
+    - name: 部署Kubernetes集群
+      include: playbooks/03-kubernetes-setup.yml
+      tags: [setup, kubernetes]
+
+    # 4. 监控系统部署
+    - name: 部署监控系统
+      include: playbooks/04-monitoring-setup.yml
+      tags: [setup, monitoring]
+
+    # 5. CI/CD系统部署
+    - name: 部署CI/CD系统
+      include: playbooks/05-cicd-setup.yml
+      tags: [setup, cicd]
+
+    # 6. 应用部署
+    - name: 部署示例应用
+      include: playbooks/06-application-deploy.yml
+      tags: [deploy, application]
+
+    # 7. 系统验证
+    - name: 验证系统部署
+      include: playbooks/07-verification.yml
+      tags: [verify, test]
+      when: not skip_verification
+
+  post_tasks:
+    - name: 显示部署完成信息
+      debug:
+        msg:
+          - "=== 单节点云原生DevOps平台部署完成 ==="
+          - "部署模式: {{ deployment_mode }}"
+          - "部署时间: {{ ansible_date_time.iso8601 }}"
+          - "节点IP: {{ ansible_default_ipv4.address }}"
+          - ""
+          - "=== 访问地址 ==="
+          - "应用地址: http://{{ ansible_default_ipv4.address }}"
+          - "监控地址: http://{{ ansible_default_ipv4.address }}:{{ prometheus_port }}"
+          - "仪表板: http://{{ ansible_default_ipv4.address }}:{{ grafana_port }}"
+          - "GitLab: http://{{ ansible_default_ipv4.address }}:{{ gitlab_port }}"
+          - "Jenkins: http://{{ ansible_default_ipv4.address }}:{{ jenkins_port }}"
+          - "Harbor: http://{{ ansible_default_ipv4.address }}:{{ harbor_port }}"
+          - ""
+          - "=== 验证命令 ==="
+          - "kubectl get nodes"
+          - "kubectl get pods --all-namespaces"
+          - "systemctl status docker"
+          - "systemctl status kubelet"
+          - "systemctl status prometheus"
+          - "systemctl status grafana-server"
+          - ""
+          - "=== 下一步操作 ==="
+          - "1. 访问应用验证部署"
+          - "2. 配置监控告警规则"
+          - "3. 设置CI/CD流水线"
+          - "4. 备份重要数据"

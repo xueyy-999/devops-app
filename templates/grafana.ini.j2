@@ -1,0 +1,34 @@
+[server]
+protocol = http
+http_port = {{ grafana_port }}
+domain = {{ ansible_default_ipv4.address }}
+root_url = http://{{ ansible_default_ipv4.address }}:{{ grafana_port }}/
+serve_from_sub_path = false
+
+[database]
+type = sqlite3
+path = grafana.db
+
+[session]
+cookie_secure = false
+cookie_samesite = lax
+
+[security]
+admin_user = admin
+admin_password = admin
+secret_key = SW2YcwTIb9zpOOhoPsMm
+
+[users]
+allow_sign_up = true
+auto_assign_org = true
+auto_assign_org_role = Viewer
+
+[auth.anonymous]
+enabled = false
+
+[log]
+mode = console
+level = info
+
+[metrics]
+enabled = true

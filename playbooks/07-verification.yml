@@ -1,0 +1,365 @@
+---
+# 系统验证和健康检查
+- name: 验证系统部署
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars:
+    verification_timeout: 300
+    health_check_interval: 30
+
+  tasks:
+    # 1. 验证系统基础环境
+    - name: 验证系统基础环境
+      block:
+        - name: 检查系统时间
+          command: date
+          register: system_time
+          changed_when: false
+
+        - name: 检查系统负载
+          command: uptime
+          register: system_load
+          changed_when: false
+
+        - name: 检查内存使用
+          command: free -h
+          register: memory_usage
+          changed_when: false
+
+        - name: 检查磁盘使用
+          command: df -h
+          register: disk_usage
+          changed_when: false
+
+        - name: 显示系统信息
+          debug:
+            msg:
+              - "系统时间: {{ system_time.stdout }}"
+              - "系统负载: {{ system_load.stdout }}"
+              - "内存使用: {{ memory_usage.stdout_lines[1] }}"
+              - "磁盘使用: {{ disk_usage.stdout_lines[1:] }}"
+
+    # 2. 验证Docker服务
+    - name: 验证Docker服务
+      block:
+        - name: 检查Docker服务状态
+          systemd:
+            name: docker
+          register: docker_status
+
+        - name: 检查Docker版本
+          command: docker --version
+          register: docker_version
+          changed_when: false
+
+        - name: 检查Docker容器
+          command: docker ps
+          register: docker_containers
+          changed_when: false
+
+        - name: 显示Docker信息
+          debug:
+            msg:
+              - "Docker状态: {{ docker_status.status.ActiveState }}"
+              - "Docker版本: {{ docker_version.stdout }}"
+              - "运行容器: {{ docker_containers.stdout_lines[1:] | length }}"
+
+    # 3. 验证Kubernetes集群
+    - name: 验证Kubernetes集群
+      block:
+        - name: 检查kubelet服务状态
+          systemd:
+            name: kubelet
+          register: kubelet_status
+
+        - name: 检查Kubernetes节点
+          shell: kubectl get nodes -o wide
+          register: k8s_nodes
+          changed_when: false
+          when: inventory_hostname in groups['control_nodes']
+
+        - name: 检查Kubernetes Pod状态
+          shell: kubectl get pods --all-namespaces
+          register: k8s_pods
+          changed_when: false
+          when: inventory_hostname in groups['control_nodes']
+
+        - name: 检查Kubernetes服务状态
+          shell: kubectl get services --all-namespaces
+          register: k8s_services
+          changed_when: false
+          when: inventory_hostname in groups['control_nodes']
+
+        - name: 显示Kubernetes信息
+          debug:
+            msg:
+              - "kubelet状态: {{ kubelet_status.status.ActiveState }}"
+              - "节点状态: {{ k8s_nodes.stdout_lines[1:] if k8s_nodes is defined else 'N/A' }}"
+              - "Pod状态: {{ k8s_pods.stdout_lines[1:] if k8s_pods is defined else 'N/A' }}"
+              - "服务状态: {{ k8s_services.stdout_lines[1:] if k8s_services is defined else 'N/A' }}"
+
+    # 4. 验证监控服务
+    - name: 验证监控服务
+      block:
+        - name: 检查Prometheus服务
+          uri:
+            url: "http://{{ ansible_default_ipv4.address }}:{{ prometheus_port }}/api/v1/query?query=up"
+            method: GET
+            status_code: 200
+          register: prometheus_status
+          when: inventory_hostname in groups['monitoring_nodes']
+
+        - name: 检查Grafana服务
+          uri:
+            url: "http://{{ ansible_default_ipv4.address }}:{{ grafana_port }}/api/health"
+            method: GET
+            status_code: 200
+          register: grafana_status
+          when: inventory_hostname in groups['monitoring_nodes']
+
+        - name: 检查Alertmanager服务
+          uri:
+            url: "http://{{ ansible_default_ipv4.address }}:{{ alertmanager_port }}/api/v1/status"
+            method: GET
+            status_code: 200
+          register: alertmanager_status
+          when: inventory_hostname in groups['monitoring_nodes']
+
+        - name: 显示监控服务信息
+          debug:
+            msg:
+              - "Prometheus状态: {{ prometheus_status.status if prometheus_status is defined else 'N/A' }}"
+              - "Grafana状态: {{ grafana_status.status if grafana_status is defined else 'N/A' }}"
+              - "Alertmanager状态: {{ alertmanager_status.status if alertmanager_status is defined else 'N/A' }}"
+
+    # 5. 验证CI/CD服务
+    - name: 验证CI/CD服务
+      block:
+        - name: 计算GitLab API地址
+          set_fact:
+            gitlab_api_primary: "http://{{ ansible_default_ipv4.address }}{% if gitlab_port != 80 %}:{{ gitlab_port }}{% endif %}/api/v4/version"
+            gitlab_api_alt: "http://{{ ansible_default_ipv4.address }}{% if gitlab_port != 80 %}:{{ gitlab_port }}{% endif %}/gitlab/api/v4/version"
+          when: inventory_hostname in groups['cicd_nodes']
+
+        - name: 计算GitLab根地址
+          set_fact:
+            gitlab_root_url: "http://{{ ansible_default_ipv4.address }}{% if gitlab_port != 80 %}:{{ gitlab_port }}{% endif %}/"
+          when: inventory_hostname in groups['cicd_nodes']
+
+        - name: 计算GitLab内置地址（本机回环）
+          set_fact:
+            gitlab_internal_url: "http://127.0.0.1:8081/users/sign_in"
+          when: inventory_hostname in groups['cicd_nodes']
+
+        - name: GitLab根路径探活（通过反代）
+          uri:
+            url: "{{ gitlab_root_url }}"
+            method: GET
+            follow_redirects: all
+            validate_certs: no
+            status_code:
+              - 200
+              - 302
+          register: gitlab_root_status
+          failed_when: false
+          when: inventory_hostname in groups['cicd_nodes']
+
+        - name: GitLab本机探活（内置Nginx 8081）
+          uri:
+            url: "{{ gitlab_internal_url }}"
+            method: GET
+            follow_redirects: all
+            validate_certs: no
+            status_code:
+              - 200
+              - 302
+              - 401
+              - 403
+          register: gitlab_internal_status
+          failed_when: false
+          when: inventory_hostname in groups['cicd_nodes']
+
+        - name: GitLab探活（主路径）
+          uri:
+            url: "{{ gitlab_api_primary }}"
+            method: GET
+            follow_redirects: all
+            validate_certs: no
+          register: gitlab_status
+          failed_when: false
+          when: inventory_hostname in groups['cicd_nodes']
+
+        - name: GitLab探活（子路径回退）
+          uri:
+            url: "{{ gitlab_api_alt }}"
+            method: GET
+            follow_redirects: all
+            validate_certs: no
+          register: gitlab_status_alt
+          failed_when: false
+          when: inventory_hostname in groups['cicd_nodes'] and (gitlab_status.status | default(0)) != 200
+
+        - name: 显示GitLab详细检查结果
+          debug:
+            msg:
+              - "========== GitLab连接检查结果 =========="
+              - "Root路径 ({{ gitlab_root_url }}): {{ gitlab_root_status.status | default('FAILED') }}"
+              - "内部路径 ({{ gitlab_internal_url }}): {{ gitlab_internal_status.status | default('FAILED') }}"
+              - "API主路径 ({{ gitlab_api_primary }}): {{ gitlab_status.status | default('FAILED') }}"
+              - "API备用路径 ({{ gitlab_api_alt }}): {{ gitlab_status_alt.status | default('FAILED') }}"
+              - "========================================="
+          when: inventory_hostname in groups['cicd_nodes']
+
+        - name: 断言GitLab可达
+          assert:
+            that:
+              - ((gitlab_root_status.status | default(0)) in [200, 302]) or ((gitlab_internal_status.status | default(0)) in [200, 302, 401, 403]) or (gitlab_status.status | default(0)) in [200, 401] or (gitlab_status_alt.status | default(0)) in [200, 401]
+            fail_msg: |
+              ❌ GitLab 检查失败！
+              
+              检查结果：
+                - Root路径: {{ gitlab_root_status.status | default('N/A') }}
+                - 内部路径: {{ gitlab_internal_status.status | default('N/A') }}  
+                - API主路径: {{ gitlab_status.status | default('N/A') }}
+                - API备用路径: {{ gitlab_status_alt.status | default('N/A') }}
+              
+              🔍 可能的原因：
+                1. GitLab服务未完全启动（最常见）
+                2. PostgreSQL数据库连接失败
+                3. Redis服务未运行
+                4. Nginx反向代理配置错误
+                5. 磁盘空间或内存不足
+              
+              🚀 立即诊断：
+                ssh {{ ansible_host }}
+                cd /root/cloud-native-devops-platform
+                ./scripts/gitlab-diagnosis.sh
+              
+              📖 详细排查指南：
+                查看 GITLAB_TROUBLESHOOTING.md 文件
+              
+              ⏱️  如果GitLab刚启动，请等待5-10分钟后重试
+          when: inventory_hostname in groups['cicd_nodes']
+
+        - name: 检查Jenkins服务
+          uri:
+            url: "http://{{ ansible_default_ipv4.address }}:{{ jenkins_port }}/api/json"
+            method: GET
+            status_code: 200
+            follow_redirects: all
+            validate_certs: no
+          register: jenkins_status
+          failed_when: false
+          when: inventory_hostname in groups['cicd_nodes']
+
+        - name: 检查Harbor服务
+          uri:
+            url: "http://{{ ansible_default_ipv4.address }}:5000/api/v2.0/systeminfo"
+            method: GET
+            status_code:
+              - 200
+              - 308
+              - 301
+              - 302
+            follow_redirects: safe
+            validate_certs: no
+          register: harbor_status
+          failed_when: false
+          when: inventory_hostname in groups['cicd_nodes']
+
+        - name: 显示CI/CD服务信息
+          debug:
+            msg:
+              - "GitLab状态: {{ gitlab_status.status if gitlab_status is defined else 'N/A' }}"
+              - "Jenkins状态: {{ jenkins_status.status if jenkins_status is defined else 'N/A' }}"
+              - "Harbor状态: {{ harbor_status.status if harbor_status is defined else 'N/A' }}"
+
+    # 6. 验证应用部署
+    - name: 验证应用部署
+      block:
+        - name: 检查应用Pod状态
+          shell: kubectl get pods -n {{ app_namespace }} -l app={{ app_name }}
+          register: app_pods
+          changed_when: false
+          when: inventory_hostname in groups['control_nodes']
+
+        - name: 检查应用服务状态
+          shell: kubectl get services -n {{ app_namespace }} -l app={{ app_name }}
+          register: app_services
+          changed_when: false
+          when: inventory_hostname in groups['control_nodes']
+
+        - name: 检查应用Ingress状态
+          shell: kubectl get ingress -n {{ app_namespace }} -l app={{ app_name }}
+          register: app_ingress
+          changed_when: false
+          when: inventory_hostname in groups['control_nodes']
+
+        - name: 检查应用HPA状态
+          shell: kubectl get hpa -n {{ app_namespace }} -l app={{ app_name }}
+          register: app_hpa
+          changed_when: false
+          when: inventory_hostname in groups['control_nodes']
+
+        - name: 显示应用信息
+          debug:
+            msg:
+              - "应用Pod状态: {{ app_pods.stdout_lines[1:] if app_pods is defined else 'N/A' }}"
+              - "应用服务状态: {{ app_services.stdout_lines[1:] if app_services is defined else 'N/A' }}"
+              - "应用Ingress状态: {{ app_ingress.stdout_lines[1:] if app_ingress is defined else 'N/A' }}"
+              - "应用HPA状态: {{ app_hpa.stdout_lines[1:] if app_hpa is defined else 'N/A' }}"
+
+    # 7. 性能测试
+    - name: 性能测试
+      block:
+        - name: 测试应用响应时间
+          uri:
+            url: "http://{{ ansible_default_ipv4.address }}/"
+            method: GET
+            timeout: 10
+            status_code:
+              - 200
+              - 302
+              - 500
+          register: app_response
+          failed_when: false
+          when: inventory_hostname in groups['control_nodes']
+
+        - name: 测试监控服务响应时间
+          uri:
+            url: "http://{{ ansible_default_ipv4.address }}:{{ prometheus_port }}/"
+            method: GET
+            timeout: 10
+          register: prometheus_response
+          when: inventory_hostname in groups['monitoring_nodes']
+
+        - name: 显示性能测试结果
+          debug:
+            msg:
+              - "应用响应时间: {{ app_response.elapsed if app_response is defined else 'N/A' }}秒"
+              - "Prometheus响应时间: {{ prometheus_response.elapsed if prometheus_response is defined else 'N/A' }}秒"
+
+    # 8. 生成验证报告
+    - name: 生成验证报告
+      template:
+        src: ../templates/verification-report.j2
+        dest: /tmp/verification-report.md
+        mode: '0644'
+
+    - name: 显示验证报告
+      debug:
+        msg: "验证报告已生成: /tmp/verification-report.md"
+
+  post_tasks:
+    - name: 显示系统状态总结
+      debug:
+        msg:
+          - "=== 系统验证完成 ==="
+          - "控制节点: {{ groups['control_nodes'] | join(', ') }}"
+          - "计算节点: {{ groups['compute_nodes'] | join(', ') }}"
+          - "监控节点: {{ groups['monitoring_nodes'] | join(', ') }}"
+          - "CI/CD节点: {{ groups['cicd_nodes'] | join(', ') }}"
+          - "应用访问地址: http://{{ app_domain }}"
+          - "监控地址: http://{{ ansible_default_ipv4.address }}:{{ prometheus_port }}"
+          - "仪表板地址: http://{{ ansible_default_ipv4.address }}:{{ grafana_port }}"

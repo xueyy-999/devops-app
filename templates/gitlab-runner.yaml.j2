@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitlab-runner
+  namespace: {{ cicd_namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gitlab-runner
+  template:
+    metadata:
+      labels:
+        app: gitlab-runner
+    spec:
+      containers:
+      - name: gitlab-runner
+        image: gitlab/gitlab-runner:latest
+        env:
+        - name: CI_SERVER_URL
+          value: "http://{{ ansible_default_ipv4.address }}:{{ gitlab_port }}"
+        - name: REGISTRATION_TOKEN
+          value: "{{ vault_gitlab_runner_token | default('your-runner-token') }}"
+        - name: RUNNER_EXECUTOR
+          value: "kubernetes"
+        - name: RUNNER_TAG_LIST
+          value: "kubernetes,docker"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/gitlab-runner
+        - name: cache
+          mountPath: /cache
+      volumes:
+      - name: config
+        configMap:
+          name: gitlab-runner-config
+      - name: cache
+        emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitlab-runner-config
+  namespace: {{ cicd_namespace }}
+data:
+  config.toml: |
+    concurrent = 4
+    check_interval = 0
+
+    [session_server]
+      session_timeout = 1800
+
+    [[runners]]
+      name = "kubernetes-runner"
+      url = "http://{{ ansible_default_ipv4.address }}:{{ gitlab_port }}"
+      token = "{{ vault_gitlab_runner_token | default('your-runner-token') }}"
+      executor = "kubernetes"
+      [runners.kubernetes]
+        namespace = "{{ cicd_namespace }}"
+        image = "alpine:latest"
+        privileged = true
+        [runners.kubernetes.volumes]
+          [[runners.kubernetes.volumes.host_path]]
+            name = "docker-sock"
+            mount_path = "/var/run/docker.sock"
+            host_path = "/var/run/docker.sock"

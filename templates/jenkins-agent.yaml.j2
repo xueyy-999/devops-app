@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins-agent
+  namespace: {{ cicd_namespace }}
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: jenkins-agent
+  template:
+    metadata:
+      labels:
+        app: jenkins-agent
+    spec:
+      containers:
+      - name: jenkins-agent
+        image: jenkins/inbound-agent:latest
+        env:
+        - name: JENKINS_URL
+          value: "http://{{ ansible_default_ipv4.address }}:{{ jenkins_port }}"
+        - name: JENKINS_SECRET
+          value: "{{ vault_jenkins_secret | default('your-jenkins-secret') }}"
+        - name: JENKINS_AGENT_NAME
+          value: "kubernetes-agent"
+        - name: JENKINS_AGENT_WORKDIR
+          value: "/home/jenkins/agent"
+        volumeMounts:
+        - name: workspace
+          mountPath: /home/jenkins/agent
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+      volumes:
+      - name: workspace
+        emptyDir: {}
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+          type: Socket

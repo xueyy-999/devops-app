@@ -1,0 +1,19 @@
+# 使用NTP服务器
+{% for ntp_server in ntp_servers %}
+server {{ ntp_server }} iburst
+{% endfor %}
+
+# 允许本地网络客户端
+allow 192.168.76.0/24
+
+# 记录测量统计
+driftfile /var/lib/chrony/drift
+
+# 允许系统时钟被步进
+makestep 1.0 3
+
+# 启用内核同步
+rtcsync
+
+# 记录日志
+logdir /var/log/chrony

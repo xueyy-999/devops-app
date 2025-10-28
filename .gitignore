@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Ansible
+*.retry
+.ansible/
+
+# Vagrant
+.vagrant/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+*~
+
+# Sensitive data
+vault_pass.txt
+*.pem
+*.key
+!*.key.example
+secrets/
+.env
+
+# VM specific
+*.box
+*.vmdk
+*.vdi
+
+# Build artifacts
+*.tar.gz
+*.zip
+*.rpm
+*.deb
+
+# Generated files
+verification-report.md
+gitlab-diagnosis.txt
+gitlab-diag.log
+system-info.txt
+*.tar.gz
+/tmp/
+
+# Logs
+logs/
+*.log
+/var/log/
+
+# Backup files
+*.yml.backup
+*.conf.backup
+*.rb.backup
+
+# Test files
+test-results/
+coverage/

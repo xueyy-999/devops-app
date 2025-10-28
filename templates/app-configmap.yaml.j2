@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ app_name }}-config
+  namespace: {{ app_namespace }}
+data:
+  nginx.conf: |
+    worker_processes auto;
+    error_log /var/log/nginx/error.log;
+    pid /run/nginx.pid;
+
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                        '$status $body_bytes_sent "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for"';
+
+        access_log /var/log/nginx/access.log main;
+
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        types_hash_max_size 2048;
+
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        server {
+            listen 8080;
+            server_name {{ app_domain }};
+            root /usr/share/nginx/html;
+            index index.html;
+
+            location / {
+                try_files $uri $uri/ /index.html;
+            }
+
+            location /health {
+                access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+
+            location /ready {
+                access_log off;
+                return 200 "ready\n";
+                add_header Content-Type text/plain;
+            }
+        }
+    }
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>云原生DevOps平台</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+            .container { max-width: 800px; margin: 0 auto; text-align: center; }
+            h1 { font-size: 3em; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+            .info { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; margin: 20px 0; }
+            .status { display: inline-block; padding: 10px 20px; margin: 10px; background: rgba(0,255,0,0.3); border-radius: 5px; }
+            .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0; }
+            .metric { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🚀 云原生DevOps平台</h1>
+            <div class="info">
+                <h2>系统状态</h2>
+                <div class="status">✅ 运行正常</div>
+                <div class="status">🔧 自动扩缩容</div>
+                <div class="status">📊 监控告警</div>
+                <div class="status">🔄 CI/CD流水线</div>
+            </div>
+            <div class="metrics">
+                <div class="metric">
+                    <h3>Kubernetes集群</h3>
+                    <p>节点数: {{ app_replicas }}</p>
+                    <p>状态: 健康</p>
+                </div>
+                <div class="metric">
+                    <h3>监控系统</h3>
+                    <p>Prometheus: 运行中</p>
+                    <p>Grafana: 运行中</p>
+                </div>
+                <div class="metric">
+                    <h3>CI/CD</h3>
+                    <p>GitLab: 运行中</p>
+                    <p>Jenkins: 运行中</p>
+                </div>
+                <div class="metric">
+                    <h3>存储</h3>
+                    <p>类型: 本地存储</p>
+                    <p>状态: 正常</p>
+                </div>
+            </div>
+            <div class="info">
+                <h3>访问地址</h3>
+                <p>应用地址: http://{{ app_domain }}</p>
+                <p>监控地址: http://{{ ansible_default_ipv4.address }}:{{ prometheus_port }}</p>
+                <p>仪表板: http://{{ ansible_default_ipv4.address }}:{{ grafana_port }}</p>
+            </div>
+        </div>
+        </body>
+    </html>

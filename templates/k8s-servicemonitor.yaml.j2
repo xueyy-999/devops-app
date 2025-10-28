@@ -1,0 +1,25 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: prometheus
+  namespace: {{ monitoring_namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: prometheus
+  endpoints:
+  - port: prometheus
+    interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: node-exporter
+  namespace: {{ monitoring_namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  endpoints:
+  - port: node-exporter
+    interval: 30s

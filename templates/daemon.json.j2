@@ -1,0 +1,44 @@
+{
+  "log-driver": "{{ docker_config['log-driver'] }}",
+  "log-opts": {
+    "max-size": "{{ docker_config['log-opts']['max-size'] }}",
+    "max-file": "{{ docker_config['log-opts']['max-file'] }}"
+  },
+  "storage-driver": "{{ docker_config['storage-driver'] }}",
+  "storage-opts": [
+    "{{ docker_config['storage-opts'][0] }}"
+  ],
+  "live-restore": {{ docker_config['live-restore'] | lower }},
+  "userland-proxy": {{ docker_config['userland-proxy'] | lower }},
+  "experimental": {{ docker_config['experimental'] | lower }},
+  "exec-opts": ["native.cgroupdriver=systemd"],
+  "registry-mirrors": [
+    "https://docker.mirrors.ustc.edu.cn",
+    "https://hub-mirror.c.163.com",
+    "https://mirror.baidubce.com"
+  ],
+  "insecure-registries": [
+    "{{ ansible_default_ipv4.address }}:{{ registry_port }}"
+  ],
+  "data-root": "/var/lib/docker",
+  "exec-root": "/var/run/docker",
+  "pidfile": "/var/run/docker.pid",
+  "hosts": [
+    "unix:///var/run/docker.sock",
+    "tcp://0.0.0.0:2376"
+  ],
+  "tls": false,
+  "tlsverify": false,
+  "tlscacert": "",
+  "tlscert": "",
+  "tlskey": "",
+  "swarm-default-advertise-addr": "",
+  "metrics-addr": "0.0.0.0:9323",
+  "default-ulimits": {
+    "nofile": {
+      "Name": "nofile",
+      "Hard": 65536,
+      "Soft": 65536
+    }
+  }
+}

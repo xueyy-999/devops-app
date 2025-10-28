@@ -1,0 +1,84 @@
+---
+# SELinux检查和处理（所有playbook的前置条件）
+# 在运行任何部署playbook前必须先运行此脚本
+- name: SELinux状态检查和处理
+  hosts: all
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: 检查SELinux当前状态
+      command: getenforce
+      register: selinux_current
+      changed_when: false
+
+    - name: 检查SELinux配置文件
+      slurp:
+        src: /etc/selinux/config
+      register: selinux_config_content
+
+    - name: 解析SELinux配置
+      set_fact:
+        selinux_config: "{{ selinux_config_content.content | b64decode }}"
+
+    - name: 显示SELinux状态
+      debug:
+        msg:
+          - "========== SELinux状态检查 =========="
+          - "当前状态: {{ selinux_current.stdout }}"
+          - "配置文件: {{ selinux_config | regex_search('SELINUX=\\w+') }}"
+          - "======================================="
+
+    - name: 如果SELinux是Enforcing，临时设置为Permissive
+      command: setenforce 0
+      when: selinux_current.stdout == "Enforcing"
+      register: selinux_temp_disable
+
+    - name: 显示临时禁用结果
+      debug:
+        msg: "SELinux已临时设置为Permissive模式"
+      when: selinux_temp_disable is changed
+
+    - name: 永久禁用SELinux（修改配置文件）
+      lineinfile:
+        path: /etc/selinux/config
+        regexp: '^SELINUX='
+        line: 'SELINUX=disabled'
+        backup: yes
+      when: selinux_current.stdout != "Disabled"
+      register: selinux_config_change
+
+    - name: 提示重启（如果需要）
+      debug:
+        msg: |
+          ========================================
+          ⚠️  SELinux配置已更改
+          ========================================
+          
+          SELinux配置文件已修改为disabled。
+          当前已临时设置为Permissive模式，不会阻止服务运行。
+          
+          建议：
+          1. 完成所有部署后重启系统以完全禁用SELinux
+          2. 或者保持Permissive模式继续使用
+          
+          验证命令：
+          - 当前状态: getenforce
+          - 配置文件: cat /etc/selinux/config | grep ^SELINUX=
+          
+          ========================================
+      when: selinux_config_change is changed
+
+    - name: 验证SELinux不会阻止服务
+      assert:
+        that:
+          - selinux_current.stdout == "Disabled" or selinux_current.stdout == "Permissive" or selinux_temp_disable is changed
+        fail_msg: |
+          ❌ SELinux仍为Enforcing状态且无法临时禁用！
+          
+          请手动执行：
+          sudo setenforce 0
+          sudo sed -i 's/^SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
+          
+          然后重新运行此脚本。
+        success_msg: "✓ SELinux检查通过（{{ selinux_current.stdout }}）"
+

@@ -1,0 +1,56 @@
+external_url 'http://{{ ansible_default_ipv4.address }}'
+gitlab_rails['gitlab_shell_ssh_port'] = {{ gitlab_ssh_port }}
+
+# 将 GitLab 内置 NGINX 改为在本机 8081 监听，供外部 Nginx 反代
+nginx['listen_port'] = 8081
+nginx['listen_addresses'] = ['127.0.0.1']
+
+# 数据库配置
+postgresql['enable'] = false
+gitlab_rails['db_adapter'] = 'postgresql'
+gitlab_rails['db_encoding'] = 'unicode'
+gitlab_rails['db_host'] = '127.0.0.1'
+gitlab_rails['db_port'] = 5432
+gitlab_rails['db_username'] = 'gitlab'
+gitlab_rails['db_password'] = '{{ vault_gitlab_db_password | default("gitlab123") }}'
+gitlab_rails['db_database'] = 'gitlabhq_production'
+
+# Redis配置
+redis['enable'] = false
+gitlab_rails['redis_host'] = '127.0.0.1'
+gitlab_rails['redis_port'] = 6379
+gitlab_rails['redis_password'] = ''
+
+# 邮件配置
+gitlab_rails['smtp_enable'] = true
+gitlab_rails['smtp_address'] = "smtp.gmail.com"
+gitlab_rails['smtp_port'] = 587
+gitlab_rails['smtp_user_name'] = "your-email@gmail.com"
+gitlab_rails['smtp_password'] = "your-password"
+gitlab_rails['smtp_domain'] = "gmail.com"
+gitlab_rails['smtp_authentication'] = "login"
+gitlab_rails['smtp_enable_starttls_auto'] = true
+gitlab_rails['smtp_tls'] = false
+gitlab_rails['gitlab_email_from'] = 'gitlab@{{ ansible_domain }}'
+gitlab_rails['gitlab_email_reply_to'] = 'noreply@{{ ansible_domain }}'
+
+# 备份配置
+gitlab_rails['backup_keep_time'] = 604800
+gitlab_rails['backup_path'] = "/var/opt/gitlab/backups"
+
+# 日志配置
+gitlab_rails['log_level'] = 'INFO'
+gitlab_rails['log_directory'] = '/var/log/gitlab'
+
+# 性能优化
+gitlab_rails['worker_processes'] = 2
+gitlab_rails['worker_timeout'] = 60
+gitlab_rails['worker_memory_limit_mb'] = 1024
+
+# 安全配置
+gitlab_rails['gitlab_shell_ssh_port'] = {{ gitlab_ssh_port }}
+gitlab_rails['gitlab_shell_git_timeout'] = 800
+
+# 监控配置（禁用内置 Prometheus，避免与外部 Prometheus 端口冲突）
+prometheus_monitoring['enable'] = false
+# prometheus_monitoring['listen_address'] = '0.0.0.0:9090'

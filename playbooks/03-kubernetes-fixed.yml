@@ -1,0 +1,338 @@
+---
+# Kubernetes集群部署 - 修复仓库问题版本
+- name: 部署Kubernetes集群
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars:
+    # Kubernetes版本
+    kube_version: "{{ kubernetes_version }}"
+    
+    # 网络配置
+    pod_network_cidr: "{{ pod_network }}"
+    service_cidr: "{{ service_network }}"
+
+  tasks:
+    # 1. 安装Kubernetes仓库 - 使用阿里云镜像
+    - name: 创建Kubernetes仓库配置
+      copy:
+        content: |
+          [kubernetes]
+          name=Kubernetes
+          baseurl=https://mirrors.aliyun.com/kubernetes/yum/repos/kubernetes-el7-x86_64/
+          enabled=1
+          gpgcheck=1
+          repo_gpgcheck=1
+          gpgkey=https://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg https://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
+        dest: /etc/yum.repos.d/kubernetes.repo
+        mode: '0644'
+
+    # 2. 安装Kubernetes组件
+    - name: 安装Kubernetes组件
+      dnf:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+        disable_excludes: kubernetes
+
+    # 3. 配置系统参数
+    - name: 配置系统参数
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      loop:
+        - { key: "net.bridge.bridge-nf-call-iptables", value: "1" }
+        - { key: "net.bridge.bridge-nf-call-ip6tables", value: "1" }
+        - { key: "net.ipv4.ip_forward", value: "1" }
+        - { key: "vm.swappiness", value: "0" }
+
+    # 4. 加载内核模块
+    - name: 加载内核模块
+      modprobe:
+        name: "{{ item }}"
+      loop:
+        - br_netfilter
+        - overlay
+
+    - name: 持久化内核模块
+      lineinfile:
+        path: /etc/modules-load.d/k8s.conf
+        line: "{{ item }}"
+        create: yes
+      loop:
+        - br_netfilter
+        - overlay
+
+    # 5. 配置swap
+    - name: 禁用swap
+      shell: |
+        swapoff -a
+        sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+
+    # 6. 启动kubelet服务
+    - name: 启动并启用kubelet服务
+      systemd:
+        name: kubelet
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+    # 7. 配置防火墙规则
+    - name: 配置Kubernetes防火墙规则
+      firewalld:
+        port: "{{ item.port }}/{{ item.protocol }}"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      loop:
+        - { port: "6443", protocol: "tcp" }
+        - { port: "2379-2380", protocol: "tcp" }
+        - { port: "10250", protocol: "tcp" }
+        - { port: "10251", protocol: "tcp" }
+        - { port: "10252", protocol: "tcp" }
+        - { port: "30000-32767", protocol: "tcp" }
+
+- name: 初始化Kubernetes控制平面
+  hosts: single_node
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    # 1. 创建证书目录
+    - name: 创建证书目录
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /etc/kubernetes/pki
+        - /etc/kubernetes/pki/etcd
+
+    # 2. 生成kubeadm配置
+    - name: 生成kubeadm配置
+      copy:
+        content: |
+          apiVersion: kubeadm.k8s.io/v1beta3
+          kind: InitConfiguration
+          localAPIEndpoint:
+            advertiseAddress: {{ ansible_default_ipv4.address }}
+            bindPort: 6443
+          nodeRegistration:
+            criSocket: unix:///var/run/containerd/containerd.sock
+            kubeletExtraArgs:
+              cgroup-driver: systemd
+          ---
+          apiVersion: kubeadm.k8s.io/v1beta3
+          kind: ClusterConfiguration
+          kubernetesVersion: {{ kubernetes_version }}
+          controlPlaneEndpoint: {{ ansible_default_ipv4.address }}:6443
+          apiServer:
+            certSANs:
+              - {{ ansible_default_ipv4.address }}
+              - {{ ansible_default_ipv4.address }}
+            extraArgs:
+              audit-log-path: /var/log/audit.log
+              audit-policy-file: /etc/kubernetes/audit-policy.yaml
+          etcd:
+            local:
+              dataDir: /var/lib/etcd
+          networking:
+            podSubnet: {{ pod_network }}
+            serviceSubnet: {{ service_network }}
+          dns:
+            type: CoreDNS
+          ---
+          apiVersion: kubelet.config.k8s.io/v1beta1
+          kind: KubeletConfiguration
+          cgroupDriver: systemd
+          clusterDNS:
+            - 10.96.0.10
+          clusterDomain: cluster.local
+        dest: /tmp/kubeadm-config.yaml
+        mode: '0644'
+
+    # 3. 初始化集群
+    - name: 初始化Kubernetes集群
+      command: kubeadm init --config=/tmp/kubeadm-config.yaml
+      register: kubeadm_init
+      args:
+        creates: /etc/kubernetes/admin.conf
+
+    # 4. 配置kubectl
+    - name: 配置kubectl
+      shell: |
+        mkdir -p /root/.kube
+        cp -i /etc/kubernetes/admin.conf /root/.kube/config
+        chown root:root /root/.kube/config
+      args:
+        creates: /root/.kube/config
+
+    # 5. 安装CNI插件
+    - name: 安装Flannel CNI
+      shell: kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+      when: kubeadm_init.rc == 0
+
+    # 6. 等待节点就绪
+    - name: 等待节点就绪
+      shell: kubectl get nodes
+      register: nodes_status
+      retries: 30
+      delay: 10
+      until: "'Ready' in nodes_status.stdout"
+
+    # 7. 生成join命令
+    - name: 生成join命令
+      shell: kubeadm token create --print-join-command
+      register: join_command
+      when: kubeadm_init.rc == 0
+
+    - name: 保存join命令
+      set_fact:
+        kubeadm_join_command: "{{ join_command.stdout }}"
+
+- name: 配置集群网络和存储
+  hosts: single_node
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    # 1. 安装网络插件
+    - name: 安装Flannel网络插件
+      shell: |
+        kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+      when: kubeadm_init.rc == 0
+
+    # 2. 安装存储类
+    - name: 安装本地存储类
+      copy:
+        content: |
+          apiVersion: storage.k8s.io/v1
+          kind: StorageClass
+          metadata:
+            name: {{ storage_class }}
+          provisioner: kubernetes.io/no-provisioner
+          volumeBindingMode: WaitForFirstConsumer
+          allowVolumeExpansion: true
+          ---
+          apiVersion: v1
+          kind: PersistentVolume
+          metadata:
+            name: local-pv-{{ ansible_default_ipv4.address | replace('.', '-') }}
+          spec:
+            capacity:
+              storage: {{ storage_size }}
+            accessModes:
+              - ReadWriteOnce
+            persistentVolumeReclaimPolicy: Retain
+            storageClassName: {{ storage_class }}
+            local:
+              path: /mnt/local-storage
+            nodeAffinity:
+              required:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                    - {{ ansible_hostname }}
+        dest: /tmp/local-storage-class.yaml
+        mode: '0644'
+
+    - name: 应用本地存储类
+      shell: kubectl apply -f /tmp/local-storage-class.yaml
+
+    # 3. 安装metrics-server
+    - name: 安装metrics-server
+      shell: |
+        kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+    # 4. 配置RBAC
+    - name: 配置RBAC
+      copy:
+        content: |
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: admin-user
+            namespace: kube-system
+          ---
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          metadata:
+            name: admin-user
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: cluster-admin
+          subjects:
+          - kind: ServiceAccount
+            name: admin-user
+            namespace: kube-system
+          ---
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: metrics-server
+            namespace: kube-system
+          ---
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRole
+          metadata:
+            name: system:aggregated-metrics-reader
+            labels:
+              rbac.authorization.k8s.io/aggregate-to-view: "true"
+              rbac.authorization.k8s.io/aggregate-to-edit: "true"
+              rbac.authorization.k8s.io/aggregate-to-admin: "true"
+          rules:
+          - apiGroups: ["metrics.k8s.io"]
+            resources: ["pods", "nodes"]
+            verbs: ["get", "list"]
+          ---
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRole
+          metadata:
+            name: system:metrics-server
+          rules:
+          - apiGroups: [""]
+            resources:
+            - pods
+            - nodes
+            - nodes/stats
+            - namespaces
+            - configmaps
+            verbs:
+            - get
+            - list
+            - watch
+        dest: /tmp/rbac-config.yaml
+        mode: '0644'
+
+    - name: 应用RBAC配置
+      shell: kubectl apply -f /tmp/rbac-config.yaml
+
+    # 5. 验证集群状态
+    - name: 验证集群状态
+      shell: kubectl get nodes -o wide
+      register: cluster_status
+
+    - name: 显示集群状态
+      debug:
+        msg: "{{ cluster_status.stdout_lines }}"
+
+  post_tasks:
+    - name: 保存kubeconfig
+      copy:
+        content: "{{ lookup('file', '/etc/kubernetes/admin.conf') }}"
+        dest: "{{ playbook_dir }}/kubeconfig"
+        mode: '0600'
+
+    - name: 显示集群信息
+      debug:
+        msg:
+          - "Kubernetes集群部署完成"
+          - "控制节点: {{ ansible_default_ipv4.address }}"
+          - "kubeconfig文件已保存到: {{ playbook_dir }}/kubeconfig"

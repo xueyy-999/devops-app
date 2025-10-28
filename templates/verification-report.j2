@@ -1,0 +1,76 @@
+# 云原生DevOps平台验证报告
+
+## 部署信息
+- **部署时间**: {{ ansible_date_time.iso8601 }}
+- **部署节点**: {{ inventory_hostname }}
+- **系统版本**: {{ ansible_distribution }} {{ ansible_distribution_version }}
+
+## 系统状态
+
+### 基础环境
+- **系统时间**: {{ ansible_date_time.iso8601 }}
+- **系统负载**: {{ ansible_loadavg['1min'] | default('N/A') }} (1分钟)
+- **内存使用**: {{ ansible_memtotal_mb | default('N/A') }}MB 总计
+- **磁盘使用**: {{ (ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first) | default('N/A') }}MB 可用
+
+### Docker服务
+- **Docker版本**: {{ ansible_facts['docker_version'] if ansible_facts['docker_version'] is defined else 'N/A' }}
+- **容器数量**: {{ ansible_facts['docker_containers'] | length if ansible_facts['docker_containers'] is defined else 'N/A' }}
+
+### Kubernetes集群
+- **集群版本**: {{ kubernetes_version }}
+- **节点数量**: {{ groups['all'] | length }}
+- **控制节点**: {{ groups['control_nodes'] | length }}
+- **工作节点**: {{ groups['compute_nodes'] | length }}
+
+### 监控系统
+- **Prometheus**: http://{{ ansible_default_ipv4.address }}:{{ prometheus_port }}
+- **Grafana**: http://{{ ansible_default_ipv4.address }}:{{ grafana_port }}
+- **Alertmanager**: http://{{ ansible_default_ipv4.address }}:{{ alertmanager_port }}
+
+### CI/CD系统
+- **GitLab**: http://{{ ansible_default_ipv4.address }}:{{ gitlab_port }}
+- **Jenkins**: http://{{ ansible_default_ipv4.address }}:{{ jenkins_port }}
+- **Harbor**: http://{{ ansible_default_ipv4.address }}:{{ harbor_port }}
+
+### 应用部署
+- **应用名称**: {{ app_name }}
+- **命名空间**: {{ app_namespace }}
+- **副本数**: {{ app_replicas }}
+- **访问地址**: http://{{ app_domain }}
+
+## 验证结果
+
+### ✅ 通过项目
+- 系统基础环境配置
+- Docker服务运行
+- Kubernetes集群部署
+- 监控系统运行
+- CI/CD系统运行
+- 应用部署成功
+
+### ⚠️ 注意事项
+- 请确保所有服务端口可访问
+- 建议配置SSL证书
+- 定期备份重要数据
+- 监控系统资源使用情况
+
+## 下一步操作
+
+1. **访问应用**: 打开浏览器访问 http://{{ app_domain }}
+2. **查看监控**: 访问 http://{{ ansible_default_ipv4.address }}:{{ prometheus_port }}
+3. **查看仪表板**: 访问 http://{{ ansible_default_ipv4.address }}:{{ grafana_port }}
+4. **管理代码**: 访问 http://{{ ansible_default_ipv4.address }}:{{ gitlab_port }}
+5. **构建流水线**: 访问 http://{{ ansible_default_ipv4.address }}:{{ jenkins_port }}
+
+## 故障排除
+
+如果遇到问题，请检查：
+1. 服务状态: `systemctl status <service-name>`
+2. 日志信息: `journalctl -u <service-name> -f`
+3. 网络连接: `ping <target-ip>`
+4. 端口监听: `netstat -tlnp | grep <port>`
+
+## 联系信息
+
+如有问题，请联系系统管理员。

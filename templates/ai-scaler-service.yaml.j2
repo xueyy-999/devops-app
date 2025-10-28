@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-scaler-service
+  namespace: {{ ai_namespace }}
+  labels:
+    app: ai-scaler
+spec:
+  selector:
+    app: ai-scaler
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP

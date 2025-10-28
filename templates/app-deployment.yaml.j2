@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ app_name }}
+  namespace: {{ app_namespace }}
+  labels:
+    app: {{ app_name }}
+    version: v1.0.0
+spec:
+  replicas: {{ app_replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: {{ app_name }}
+  template:
+    metadata:
+      labels:
+        app: {{ app_name }}
+        version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ app_port }}"
+        prometheus.io/path: "/metrics"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - {{ app_name }}
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: {{ app_name }}
+        image: {{ app_image }}
+        ports:
+        - containerPort: {{ app_port }}
+          name: http
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        env:
+        - name: APP_NAME
+          value: "{{ app_name }}"
+        - name: APP_PORT
+          value: "{{ app_port }}"
+        - name: APP_NAMESPACE
+          value: "{{ app_namespace }}"
+        envFrom:
+        - secretRef:
+            name: {{ app_name }}-secret
+        volumeMounts:
+        - name: config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        - name: html
+          mountPath: /usr/share/nginx/html
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ app_port }}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: {{ app_port }}
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          runAsUser: 0
+          runAsNonRoot: false
+          allowPrivilegeEscalation: true
+      volumes:
+      - name: config
+        configMap:
+          name: {{ app_name }}-config
+      - name: html
+        configMap:
+          name: {{ app_name }}-config
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30

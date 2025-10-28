@@ -1,0 +1,203 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-scaler-config
+  namespace: {{ ai_namespace }}
+data:
+  ai_scaler.py: |
+    #!/usr/bin/env python3
+    """
+    AI扩缩容模块 - 基于机器学习的自动扩缩容
+    """
+    import os
+    import time
+    import logging
+    import requests
+    import numpy as np
+    import pandas as pd
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.preprocessing import StandardScaler
+    import joblib
+    from datetime import datetime, timedelta
+    from kubernetes import client, config
+    from flask import Flask, jsonify
+
+    # 配置日志
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    class AIScaler:
+        def __init__(self, prometheus_url, kubeconfig_path=None):
+            self.prometheus_url = prometheus_url
+            self.model = RandomForestRegressor(n_estimators=100, random_state=42)
+            self.scaler = StandardScaler()
+            self.is_trained = False
+            
+            # 初始化Kubernetes客户端
+            if kubeconfig_path:
+                config.load_kube_config(config_file=kubeconfig_path)
+            else:
+                config.load_incluster_config()
+            
+            self.apps_v1 = client.AppsV1Api()
+            self.autoscaling_v2 = client.AutoscalingV2Api()
+        
+        def query_prometheus(self, query, start_time, end_time, step='1m'):
+            """查询Prometheus指标数据"""
+            params = {
+                'query': query,
+                'start': start_time.timestamp(),
+                'end': end_time.timestamp(),
+                'step': step
+            }
+            
+            try:
+                response = requests.get(f"{self.prometheus_url}/api/v1/query_range", params=params)
+                data = response.json()
+                
+                if data['status'] == 'success':
+                    return data['data']['result']
+                else:
+                    logger.error(f"Prometheus query failed: {data}")
+                    return []
+            except Exception as e:
+                logger.error(f"Error querying Prometheus: {e}")
+                return []
+        
+        def collect_training_data(self, days=7):
+            """收集训练数据"""
+            end_time = datetime.now()
+            start_time = end_time - timedelta(days=days)
+            
+            # 查询CPU使用率
+            cpu_query = 'avg(rate(container_cpu_usage_seconds_total[5m])) by (pod)'
+            cpu_data = self.query_prometheus(cpu_query, start_time, end_time)
+            
+            # 查询内存使用率
+            memory_query = 'avg(container_memory_usage_bytes) by (pod)'
+            memory_data = self.query_prometheus(memory_query, start_time, end_time)
+            
+            # 查询请求数量
+            request_query = 'sum(rate(http_requests_total[5m])) by (pod)'
+            request_data = self.query_prometheus(request_query, start_time, end_time)
+            
+            # 数据预处理和特征工程
+            df = self.preprocess_data(cpu_data, memory_data, request_data)
+            return df
+        
+        def preprocess_data(self, cpu_data, memory_data, request_data):
+            """数据预处理和特征工程"""
+            # 合并数据
+            df = pd.DataFrame()
+            
+            # 提取时间特征
+            df['hour'] = pd.to_datetime(df.index).hour
+            df['day_of_week'] = pd.to_datetime(df.index).dayofweek
+            df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
+            
+            # 计算移动平均
+            df['cpu_ma_5'] = df['cpu_usage'].rolling(window=5).mean()
+            df['memory_ma_5'] = df['memory_usage'].rolling(window=5).mean()
+            df['request_ma_5'] = df['request_count'].rolling(window=5).mean()
+            
+            # 计算趋势特征
+            df['cpu_trend'] = df['cpu_usage'].diff()
+            df['memory_trend'] = df['memory_usage'].diff()
+            df['request_trend'] = df['request_count'].diff()
+            
+            return df.dropna()
+        
+        def train_model(self, df):
+            """训练预测模型"""
+            # 特征选择
+            features = ['hour', 'day_of_week', 'is_weekend', 
+                       'cpu_ma_5', 'memory_ma_5', 'request_ma_5',
+                       'cpu_trend', 'memory_trend', 'request_trend']
+            
+            X = df[features]
+            y = df['required_replicas']  # 目标变量：所需副本数
+            
+            # 数据标准化
+            X_scaled = self.scaler.fit_transform(X)
+            
+            # 训练模型
+            self.model.fit(X_scaled, y)
+            self.is_trained = True
+            
+            # 评估模型
+            score = self.model.score(X_scaled, y)
+            logger.info(f"Model R² score: {score:.4f}")
+            
+            return score
+        
+        def predict_replicas(self, current_metrics):
+            """预测所需副本数"""
+            if not self.is_trained:
+                raise Exception("Model not trained yet")
+            
+            # 特征工程
+            features = self.extract_features(current_metrics)
+            features_scaled = self.scaler.transform([features])
+            
+            # 预测
+            predicted_replicas = self.model.predict(features_scaled)[0]
+            
+            # 确保预测值在合理范围内
+            predicted_replicas = max(1, min(20, int(round(predicted_replicas))))
+            
+            return predicted_replicas
+        
+        def get_current_replicas(self, deployment_name, namespace):
+            """获取当前副本数"""
+            try:
+                deployment = self.apps_v1.read_namespaced_deployment(
+                    name=deployment_name, namespace=namespace
+                )
+                return deployment.status.replicas
+            except Exception as e:
+                logger.error(f"Error getting current replicas: {e}")
+                return 0
+        
+        def scale_deployment(self, deployment_name, namespace, replicas):
+            """扩缩容部署"""
+            try:
+                # 更新副本数
+                body = {'spec': {'replicas': replicas}}
+                
+                self.apps_v1.patch_namespaced_deployment_scale(
+                    name=deployment_name,
+                    namespace=namespace,
+                    body=body
+                )
+                
+                logger.info(f"Scaled {deployment_name} to {replicas} replicas")
+                return True
+            except Exception as e:
+                logger.error(f"Error scaling deployment: {e}")
+                return False
+
+    # 创建Flask应用
+    app = Flask(__name__)
+
+    @app.route('/health')
+    def health():
+        return jsonify({"status": "healthy"})
+
+    @app.route('/ready')
+    def ready():
+        return jsonify({"status": "ready"})
+
+    @app.route('/metrics')
+    def metrics():
+        return jsonify({"status": "metrics endpoint"})
+
+    if __name__ == "__main__":
+        # 配置
+        prometheus_url = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
+        kubeconfig_path = os.getenv("KUBECONFIG", "/etc/kubernetes/admin.conf")
+        
+        # 创建AI扩缩容器
+        ai_scaler = AIScaler(prometheus_url, kubeconfig_path)
+        
+        # 启动Flask应用
+        app.run(host='0.0.0.0', port=8080, debug=False)

@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pipeline-config
+  namespace: {{ cicd_namespace }}
+data:
+  pipeline.yml: |
+    stages:
+      - test
+      - build
+      - security
+      - deploy-staging
+      - integration-test
+      - deploy-production
+
+    variables:
+      DOCKER_REGISTRY: "{{ ansible_default_ipv4.address }}:{{ harbor_port }}"
+      APP_NAME: "web-application"
+      KUBECONFIG: "/etc/kubernetes/admin.conf"
+
+    test:
+      stage: test
+      script:
+        - echo "Running tests..."
+        - npm install
+        - npm run test
+        - npm run lint
+      coverage: '/Coverage: \d+\.\d+%/'
+
+    build:
+      stage: build
+      script:
+        - echo "Building Docker image..."
+        - docker build -t $DOCKER_REGISTRY/$APP_NAME:$CI_COMMIT_SHA .
+        - docker push $DOCKER_REGISTRY/$APP_NAME:$CI_COMMIT_SHA
+      only:
+        - main
+        - develop
+
+    security-scan:
+      stage: security
+      script:
+        - echo "Running security scan..."
+        - trivy image $DOCKER_REGISTRY/$APP_NAME:$CI_COMMIT_SHA
+      allow_failure: false
+
+    deploy-staging:
+      stage: deploy-staging
+      script:
+        - echo "Deploying to staging..."
+        - kubectl set image deployment/$APP_NAME $APP_NAME=$DOCKER_REGISTRY/$APP_NAME:$CI_COMMIT_SHA -n staging
+        - kubectl rollout status deployment/$APP_NAME -n staging
+      environment:
+        name: staging
+        url: https://staging.{{ ansible_domain }}
+
+    integration-test:
+      stage: integration-test
+      script:
+        - echo "Running integration tests..."
+        - newman run postman-collection.json --environment staging.json
+      dependencies:
+        - deploy-staging
+
+    deploy-production:
+      stage: deploy-production
+      script:
+        - echo "Deploying to production..."
+        - kubectl set image deployment/$APP_NAME $APP_NAME=$DOCKER_REGISTRY/$APP_NAME:$CI_COMMIT_SHA -n production
+        - kubectl rollout status deployment/$APP_NAME -n production
+      environment:
+        name: production
+        url: https://app.{{ ansible_domain }}
+      when: manual
+      only:
+        - main

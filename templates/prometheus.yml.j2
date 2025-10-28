@@ -1,0 +1,90 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: '{{ cluster_name | default("devops-cluster") }}'
+    replica: '{{ ansible_hostname }}'
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - localhost:{{ alertmanager_port }}
+
+scrape_configs:
+  # Prometheus自身监控
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:{{ prometheus_port }}']
+
+  # Node Exporter监控
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: 
+        {% for host in groups['all'] %}
+        - '{{ hostvars[host]['ansible_default_ipv4']['address'] }}:{{ node_exporter_port }}'
+        {% endfor %}
+
+  # Kubernetes API Server监控
+  - job_name: 'kubernetes-apiservers'
+    kubernetes_sd_configs:
+    - role: endpoints
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    relabel_configs:
+    - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+      action: keep
+      regex: default;kubernetes;https
+
+  # Kubernetes节点监控
+  - job_name: 'kubernetes-nodes'
+    kubernetes_sd_configs:
+    - role: node
+    relabel_configs:
+    - action: labelmap
+      regex: __meta_kubernetes_node_label_(.+)
+
+  # Kubernetes Pod监控
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+    - role: pod
+    relabel_configs:
+    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+      action: keep
+      regex: true
+    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+      action: replace
+      target_label: __metrics_path__
+      regex: (.+)
+
+  # Kubernetes服务监控
+  - job_name: 'kubernetes-services'
+    kubernetes_sd_configs:
+    - role: service
+    relabel_configs:
+    - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+      action: keep
+      regex: true
+
+  # cAdvisor监控
+  - job_name: 'kubernetes-cadvisor'
+    kubernetes_sd_configs:
+    - role: node
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    relabel_configs:
+    - action: labelmap
+      regex: __meta_kubernetes_node_label_(.+)
+    - target_label: __address__
+      replacement: kubernetes.default.svc:443
+    - source_labels: [__meta_kubernetes_node_name]
+      regex: (.+)
+      target_label: __metrics_path__
+      replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor

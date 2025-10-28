@@ -1,0 +1,284 @@
+---
+# Docker安装和配置
+- name: 在所有节点安装Docker
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars:
+    docker_version: "24.0.0"
+    containerd_version: "1.7.0"
+    docker_compose_version: "2.20.0"
+    
+    # Docker配置
+    docker_config:
+      log-driver: "json-file"
+      log-opts:
+        max-size: "10m"
+        max-file: "3"
+      storage-driver: "overlay2"
+      storage-opts:
+        - "overlay2.override_kernel_check=true"
+      live-restore: true
+      userland-proxy: false
+      experimental: false
+
+  tasks:
+    # 1. 卸载旧版本Docker
+    - name: 卸载旧版本Docker
+      dnf:
+        name:
+          - docker
+          - docker-client
+          - docker-client-latest
+          - docker-common
+          - docker-latest
+          - docker-latest-logrotate
+          - docker-logrotate
+          - docker-engine
+        state: absent
+      ignore_errors: yes
+
+    # 2. 安装依赖包
+    - name: 安装Docker依赖包
+      dnf:
+        name:
+          - yum-utils
+          - device-mapper-persistent-data
+          - lvm2
+          - containerd.io
+        state: present
+
+    # 3. 添加Docker仓库
+    - name: 添加Docker官方仓库
+      get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+        mode: '0644'
+
+    # 4. 安装Docker CE（不指定版本，让系统自动选择兼容版本）
+    - name: 安装Docker CE
+      dnf:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    # 5. 配置containerd
+    - name: 创建containerd配置目录
+      file:
+        path: /etc/containerd
+        state: directory
+        mode: '0755'
+
+    - name: 生成containerd默认配置
+      command: containerd config default
+      register: containerd_config
+      changed_when: false
+
+    - name: 保存containerd配置
+      copy:
+        content: "{{ containerd_config.stdout }}"
+        dest: /etc/containerd/config.toml
+        backup: yes
+
+    - name: 配置containerd
+      copy:
+        content: |
+          version = 2
+          [plugins."io.containerd.grpc.v1.cri"]
+            [plugins."io.containerd.grpc.v1.cri".containerd]
+              [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                  runtime_type = "io.containerd.runc.v2"
+                  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+                    SystemdCgroup = true
+        dest: /etc/containerd/config.toml
+        backup: yes
+      notify: restart containerd
+
+    # 6. 配置Docker daemon
+    - name: 创建Docker配置目录
+      file:
+        path: /etc/docker
+        state: directory
+        mode: '0755'
+
+    - name: 配置Docker daemon
+      copy:
+        content: |
+          {
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "10m",
+              "max-file": "3"
+            },
+            "storage-driver": "overlay2",
+            "live-restore": true,
+            "userland-proxy": false,
+            "registry-mirrors": [
+              "https://docker.mirrors.ustc.edu.cn",
+              "https://hub-mirror.c.163.com"
+            ],
+            "insecure-registries": [
+              "192.168.76.141:5000"
+            ]
+          }
+        dest: /etc/docker/daemon.json
+        backup: yes
+      notify: restart docker
+
+    # 7. 配置Docker服务
+    - name: 启动并启用containerd服务
+      systemd:
+        name: containerd
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+    - name: 检查Docker daemon配置
+      command: docker daemon --config-file=/etc/docker/daemon.json --validate
+      register: docker_config_check
+      failed_when: false
+      changed_when: false
+
+    - name: 显示Docker配置检查结果
+      debug:
+        msg: "Docker配置检查: {{ docker_config_check.stdout }}"
+
+    - name: 启动并启用Docker服务
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+        daemon_reload: yes
+      register: docker_start_result
+      failed_when: false
+
+    - name: 检查Docker服务状态
+      systemd:
+        name: docker
+      register: docker_status
+      when: docker_start_result.failed
+
+    - name: 显示Docker服务状态
+      debug:
+        msg: "Docker服务状态: {{ docker_status.status.ActiveState }}"
+      when: docker_start_result.failed
+
+    - name: 获取Docker服务日志
+      command: journalctl -xeu docker.service --no-pager
+      register: docker_logs
+      when: docker_start_result.failed
+
+    - name: 显示Docker服务日志
+      debug:
+        msg: "Docker服务日志: {{ docker_logs.stdout_lines[-10:] }}"
+      when: docker_start_result.failed
+
+    # 8. 配置Docker用户组
+    - name: 创建docker用户组
+      group:
+        name: docker
+        state: present
+
+    - name: 将用户添加到docker组
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    # 9. 安装Docker Compose
+    - name: 下载Docker Compose
+      get_url:
+        url: "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-Linux-x86_64"
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+        timeout: 30
+
+    - name: 创建Docker Compose软链接
+      file:
+        src: /usr/local/bin/docker-compose
+        dest: /usr/bin/docker-compose
+        state: link
+
+    # 9.1. 安装Docker Compose插件（现代方法）
+    - name: 安装Docker Compose插件
+      dnf:
+        name: docker-compose-plugin
+        state: present
+      ignore_errors: yes
+
+    # 10. 配置Docker日志轮转
+    - name: 配置Docker日志轮转
+      copy:
+        content: |
+          /var/lib/docker/containers/*/*.log {
+            rotate 3
+            daily
+            compress
+            size=1M
+            missingok
+            delaycompress
+            copytruncate
+          }
+        dest: /etc/logrotate.d/docker
+        mode: '0644'
+
+    # 11. 验证Docker安装
+    - name: 验证Docker版本
+      command: docker --version
+      register: docker_version_output
+      changed_when: false
+
+    - name: 验证Docker Compose版本
+      command: docker-compose --version
+      register: docker_compose_version_output
+      changed_when: false
+      failed_when: false
+
+    - name: 验证Docker Compose插件版本
+      command: docker compose version
+      register: docker_compose_plugin_version_output
+      changed_when: false
+      failed_when: false
+
+    - name: 显示Docker版本信息
+      debug:
+        msg:
+          - "Docker版本: {{ docker_version_output.stdout }}"
+          - "Docker Compose版本: {{ docker_compose_version_output.stdout if docker_compose_version_output.rc == 0 else '未安装' }}"
+          - "Docker Compose插件版本: {{ docker_compose_plugin_version_output.stdout if docker_compose_plugin_version_output.rc == 0 else '未安装' }}"
+
+    # 12. 测试Docker功能
+    - name: 测试Docker功能
+      command: docker run --rm hello-world
+      register: docker_test
+      changed_when: false
+
+    - name: 显示Docker测试结果
+      debug:
+        msg: "Docker测试: {{ docker_test.stdout_lines[-1] }}"
+
+  handlers:
+    - name: restart containerd
+      systemd:
+        name: containerd
+        state: restarted
+
+    - name: restart docker
+      systemd:
+        name: docker
+        state: restarted
+
+  post_tasks:
+    - name: 验证Docker服务状态
+      systemd:
+        name: docker
+      register: docker_status
+
+    - name: 显示Docker服务状态
+      debug:
+        msg: "节点 {{ inventory_hostname }} Docker服务状态: {{ docker_status.status.ActiveState }}"

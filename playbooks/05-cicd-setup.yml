@@ -1,0 +1,611 @@
+---
+# CI/CD系统部署 - GitLab + Jenkins + Harbor
+- name: 部署CI/CD系统
+  hosts: cicd_nodes
+  become: yes
+  gather_facts: yes
+  vars:
+    # GitLab配置
+    gitlab_version: "16.0.0"
+    gitlab_port: 8081      # 修改为 8081，避免与 nginx 冲突
+    gitlab_ssh_port: 22
+    
+    # Jenkins配置
+    jenkins_version: "2.401.0"
+    jenkins_port: 8080
+    jenkins_war_path: "/usr/lib/jenkins/jenkins.war"
+    
+    # Harbor配置
+    harbor_version: "2.8.0"
+    harbor_port: 5000      # 修改为 5000，避免与 nginx 冲突
+    harbor_enable_https: false
+    harbor_admin_password: "Harbor12345"
+    install_harbor: true  # 设置为 true 安装 Harbor
+    
+    # 数据库配置
+    postgresql_version: "13"
+    redis_version: "6.2"
+
+  tasks:
+    # 1. 安装基础依赖
+    - name: 安装基础依赖
+      dnf:
+        name:
+          - curl
+          - wget
+          - git
+          - openssh-server
+          - openssl
+          - postgresql-server
+          - postgresql-contrib
+          - redis
+          - nginx
+          - certbot
+          - python3-certbot-nginx
+        state: present
+
+    - name: 安装 psycopg2 驱动
+      dnf:
+        name: python3-psycopg2
+        state: present
+
+    # 2. 配置PostgreSQL
+    - name: 初始化PostgreSQL数据库
+      command: postgresql-setup --initdb
+      args:
+        creates: /var/lib/pgsql/data/PG_VERSION
+
+    - name: 启动并启用PostgreSQL
+      systemd:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    # 2.1. 临时放宽本地认证以保证后续 DB 初始化/用户创建成功，之后再改回 md5
+    - name: 设置 hba_file 默认路径（无需密码）
+      set_fact:
+        hba_file: "/var/lib/pgsql/data/pg_hba.conf"
+
+    - name: 在 pg_hba.conf 顶部前置 trust（仅本机，迁移完成后会改回 md5）
+      blockinfile:
+        path: "{{ hba_file }}"
+        marker: '# {mark} ANSIBLE MANAGED BLOCK - TEMP TRUST FOR GITLAB MIGRATION'
+        insertbefore: BOF
+        block: |
+          # TEMP: allow local connections without password for install/migration
+          local   all   all                 trust
+          host    all   all   127.0.0.1/32  trust
+          host    all   all   ::1/128       trust
+
+    - name: 重启PostgreSQL（应用临时 trust）
+      systemd:
+        name: postgresql
+        state: restarted
+        enabled: yes
+
+    - name: 创建GitLab数据库
+      postgresql_db:
+        name: gitlabhq_production
+        state: present
+        login_unix_socket: /var/run/postgresql
+      become_user: postgres
+
+    - name: 创建GitLab用户
+      postgresql_user:
+        name: gitlab
+        password: "{{ vault_gitlab_db_password | default('gitlab123') }}"
+        state: present
+        login_unix_socket: /var/run/postgresql
+      become_user: postgres
+
+    - name: 授权GitLab用户数据库权限
+      community.postgresql.postgresql_privs:
+        db: gitlabhq_production
+        type: database
+        privs: ALL
+        objs: gitlabhq_production
+        roles: gitlab
+        login_unix_socket: /var/run/postgresql
+      become_user: postgres
+
+
+    # 3. 配置Redis
+    - name: 配置Redis
+      template:
+        src: ../templates/redis.conf.j2
+        dest: /etc/redis.conf
+        backup: yes
+      notify: restart redis
+
+    - name: 启动并启用Redis
+      systemd:
+        name: redis
+        state: started
+        enabled: yes
+
+    # 4. 安装GitLab
+    - name: 添加GitLab仓库（使用国内镜像）
+      shell: |
+        # 使用清华镜像源，避免网络问题
+        cat > /etc/yum.repos.d/gitlab-ce.repo << 'EOF'
+        [gitlab-ce]
+        name=Gitlab CE Repository
+        baseurl=https://mirrors.tuna.tsinghua.edu.cn/gitlab-ce/yum/el$releasever/
+        gpgcheck=0
+        enabled=1
+        skip_if_unavailable=1
+        EOF
+      register: gitlab_repo_setup
+      changed_when: true
+
+    - name: 移除可能存在的官方 GitLab 仓库文件
+      file:
+        path: /etc/yum.repos.d/gitlab_gitlab-ce.repo
+        state: absent
+      ignore_errors: yes
+
+    - name: 禁用其他命名类似的 GitLab 仓库（若存在）
+      shell: |
+        for f in /etc/yum.repos.d/*gitlab*.repo; do
+          [ -f "$f" ] && sed -i 's/^enabled=.*/enabled=0/' "$f" || true
+        done
+      changed_when: false
+      ignore_errors: yes
+
+    - name: 清理并刷新 DNF 缓存
+      shell: |
+        dnf clean all
+        dnf -y makecache --refresh
+      changed_when: false
+
+    - name: 安装GitLab CE
+      dnf:
+        name: gitlab-ce-{{ gitlab_version }}
+        state: present
+
+    - name: 配置GitLab
+      template:
+        src: ../templates/gitlab.rb.j2
+        dest: /etc/gitlab/gitlab.rb
+        backup: yes
+      notify: reconfigure gitlab
+
+    - name: 启动GitLab
+      shell: gitlab-ctl reconfigure
+      register: gitlab_reconfigure
+      retries: 3
+      delay: 30
+
+    # 4.1. 迁移完成后，将 trust 改回 md5 并重启
+    - name: 将临时 trust 改回 md5
+      replace:
+        path: "{{ hba_file }}"
+        regexp: '\btrust\b'
+        replace: 'md5'
+        backup: yes
+
+    - name: 重启PostgreSQL（恢复为 md5）
+      systemd:
+        name: postgresql
+        state: restarted
+        enabled: yes
+
+    # 5. 安装Jenkins
+    - name: 添加Jenkins仓库
+      get_url:
+        url: https://pkg.jenkins.io/redhat-stable/jenkins.repo
+        dest: /etc/yum.repos.d/jenkins.repo
+        mode: '0644'
+        timeout: 120
+      register: jenkins_repo_download
+      retries: 5
+      delay: 10
+      until: jenkins_repo_download is succeeded
+
+    - name: 导入Jenkins GPG密钥
+      rpm_key:
+        key: https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+
+    # Jenkins 依赖 Java 运行环境
+    - name: 安装 Jenkins 运行所需的 Java
+      dnf:
+        name:
+          - java-11-openjdk
+          - java-11-openjdk-devel
+        state: present
+
+    - name: 安装Jenkins
+      dnf:
+        name: jenkins
+        state: present
+      register: jenkins_install
+
+    - name: autodetect Jenkins WAR path
+      shell: |
+        if [ -f /usr/lib/jenkins/jenkins.war ]; then echo /usr/lib/jenkins/jenkins.war; \
+        elif [ -f /usr/share/java/jenkins.war ]; then echo /usr/share/java/jenkins.war; \
+        elif [ -f /usr/share/jenkins/jenkins.war ]; then echo /usr/share/jenkins/jenkins.war; \
+        else exit 1; fi
+      register: jenkins_war_detect
+      changed_when: false
+      failed_when: false
+
+    - name: set detected Jenkins WAR path
+      set_fact:
+        jenkins_war_path: "{{ jenkins_war_detect.stdout if jenkins_war_detect.rc == 0 else jenkins_war_path }}"
+
+    - name: 配置Jenkins
+      template:
+        src: ../templates/jenkins.service.j2
+        dest: /etc/systemd/system/jenkins.service
+        mode: '0644'
+      notify: restart jenkins
+
+    - name: 启动并启用Jenkins
+      systemd:
+        name: jenkins
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+    # 6. 安装Harbor
+    - name: 安装解压依赖（tar/gzip/xz/unzip）
+      dnf:
+        name:
+          - tar
+          - gzip
+          - xz
+          - unzip
+        state: present
+      when: install_harbor | default(false) | bool
+      tags: [harbor]
+
+    - name: 清理可能的损坏 Harbor 包
+      file:
+        path: /tmp/harbor.tgz
+        state: absent
+      when: install_harbor | default(false) | bool
+      tags: [harbor]
+
+    - name: 构建 Harbor 下载 URL（支持备用源）
+      set_fact:
+        harbor_primary_url: "https://github.com/goharbor/harbor/releases/download/v{{ harbor_version }}/harbor-offline-installer-v{{ harbor_version }}.tgz"
+        harbor_fallback_url: "{{ harbor_alt_url | default('https://ghproxy.com/https://github.com/goharbor/harbor/releases/download/v' ~ harbor_version ~ '/harbor-offline-installer-v' ~ harbor_version ~ '.tgz', true) }}"
+      when: install_harbor | default(false) | bool
+      tags: [harbor]
+
+    - block:
+        - name: 下载 Harbor（主源，断点续传+重试）
+          shell: |
+            curl -L --fail --retry 10 --retry-delay 10 -C - -o /tmp/harbor.tgz "{{ harbor_primary_url }}"
+          register: harbor_curl_primary
+          retries: 3
+          delay: 15
+          until: harbor_curl_primary.rc == 0
+          tags: [harbor]
+
+        - name: 校验 Harbor 压缩包（主源）
+          command: tar -tzf /tmp/harbor.tgz
+          register: harbor_tar_primary
+          failed_when: harbor_tar_primary.rc != 0
+          tags: [harbor]
+
+      rescue:
+        - name: 清理损坏 Harbor 包（主源失败后）
+          file:
+            path: /tmp/harbor.tgz
+            state: absent
+          tags: [harbor]
+
+        - name: 下载 Harbor（备用源，断点续传+重试）
+          when: harbor_fallback_url | length > 0
+          shell: |
+            curl -L --fail --retry 10 --retry-delay 10 -C - -o /tmp/harbor.tgz "{{ harbor_fallback_url }}"
+          register: harbor_curl_fallback
+          retries: 3
+          delay: 15
+          until: harbor_curl_fallback.rc == 0
+          tags: [harbor]
+
+        - name: 校验 Harbor 压缩包（备用源）
+          when: harbor_fallback_url | length > 0
+          command: tar -tzf /tmp/harbor.tgz
+          register: harbor_tar_fallback
+          failed_when: harbor_tar_fallback.rc != 0
+          tags: [harbor]
+
+        - name: 失败提示（未提供备用源或备用源校验失败）
+          when: harbor_fallback_url | length == 0
+          fail:
+            msg: "Harbor 主源下载失败且未提供可用备用源 harbor_alt_url。可使用 --skip-tags harbor 跳过，或提供可达的 harbor_alt_url。"
+          tags: [harbor]
+      when: install_harbor | default(false) | bool
+
+    - name: 解压Harbor
+      unarchive:
+        src: /tmp/harbor.tgz
+        dest: /opt/
+        remote_src: yes
+      when: install_harbor | default(false) | bool
+      tags: [harbor]
+
+    - name: 配置Harbor
+      template:
+        src: ../templates/harbor.yml.j2
+        dest: /opt/harbor/harbor.yml
+        mode: '0644'
+      when: install_harbor | default(false) | bool
+      tags: [harbor]
+
+    - name: 创建 Harbor 证书目录（即使未启用HTTPS也创建以避免脚本报错）
+      file:
+        path: /etc/harbor/ssl
+        state: directory
+        mode: '0755'
+      when: install_harbor | default(false) | bool
+      tags: [harbor]
+
+    - name: 生成自签名 Harbor 证书（如不存在）
+      shell: |
+        openssl req -x509 -nodes -newkey rsa:2048 \
+          -keyout /etc/harbor/ssl/harbor.key \
+          -out /etc/harbor/ssl/harbor.crt \
+          -subj "/CN={{ ansible_default_ipv4.address }}" \
+          -days 3650
+      args:
+        creates: /etc/harbor/ssl/harbor.key
+      when: install_harbor | default(false) | bool
+      tags: [harbor]
+
+    - block:
+        - name: 安装Harbor（install.sh）
+          shell: |
+            cd /opt/harbor
+            ./install.sh
+          args:
+            chdir: /opt/harbor
+          register: harbor_install
+          retries: 1
+          delay: 5
+          tags: [harbor]
+
+      rescue:
+        - name: 预生成 Harbor docker-compose（不启动）
+          shell: |
+            ./prepare --with-notary --with-trivy
+          args:
+            chdir: /opt/harbor
+          tags: [harbor]
+
+        - name: 将 syslog localhost 改为 127.0.0.1（避免 ::1 连接被拒绝）
+          replace:
+            path: /opt/harbor/docker-compose.yml
+            regexp: 'syslog-address:\s*"tcp://localhost:1514"'
+            replace: 'syslog-address: "tcp://127.0.0.1:1514"'
+          tags: [harbor]
+
+        - name: 兜底替换任意 localhost:1514 为 127.0.0.1:1514
+          replace:
+            path: /opt/harbor/docker-compose.yml
+            regexp: 'localhost:1514'
+            replace: '127.0.0.1:1514'
+          tags: [harbor]
+
+        - name: 使用 docker compose 启动 Harbor
+          shell: |
+            docker compose -f /opt/harbor/docker-compose.yml up -d
+          register: harbor_compose_up
+          retries: 3
+          delay: 10
+          until: harbor_compose_up.rc == 0
+          tags: [harbor]
+      when: install_harbor | default(false) | bool
+
+    # 7. 配置Nginx反向代理
+    - name: 创建nginx日志目录
+      file:
+        path: /var/log/nginx
+        state: directory
+        owner: nginx
+        group: nginx
+        mode: '0755'
+
+    - name: 检查nginx用户是否存在
+      shell: id nginx
+      register: nginx_user_check
+      failed_when: false
+      changed_when: false
+
+    - name: 创建nginx用户
+      user:
+        name: nginx
+        system: yes
+        create_home: no
+        shell: /sbin/nologin
+      when: nginx_user_check.rc != 0
+
+    - name: 测试nginx配置语法
+      command: nginx -t
+      register: nginx_test
+      failed_when: false
+      changed_when: false
+
+    - name: 配置Nginx
+      template:
+        src: ../templates/nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+        backup: yes
+        validate: 'nginx -t -c %s'
+      notify: restart nginx
+
+    - name: 启动并启用Nginx
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
+
+    # 7.1 等待与健康检查：确保 GitLab 完全就绪（内置8081 与反代80）
+    - name: 等待 GitLab 内置 Nginx 8081 监听
+      wait_for:
+        host: 127.0.0.1
+        port: 8081
+        delay: 3
+        timeout: 600
+
+    - name: 等待外部 Nginx 80 监听
+      wait_for:
+        host: "{{ ansible_default_ipv4.address }}"
+        port: 80
+        delay: 1
+        timeout: 600
+
+    - name: 轮询 GitLab 内部就绪（/-/readiness）
+      uri:
+        url: "http://127.0.0.1:8081/-/readiness"
+        method: GET
+        follow_redirects: all
+        validate_certs: no
+        status_code: 200
+      register: gitlab_readiness
+      retries: 30
+      delay: 10
+      until: gitlab_readiness.status | default(0) == 200
+      failed_when: false
+
+    - name: 轮询 GitLab API 版本接口就绪（经反代80）
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}/api/v4/version"
+        method: GET
+        follow_redirects: all
+        validate_certs: no
+        status_code: 200
+      register: gitlab_api_version
+      retries: 30
+      delay: 10
+      until: gitlab_api_version.status | default(0) == 200
+      failed_when: false
+
+    # 8. 配置防火墙
+    - name: 配置CI/CD服务防火墙（GitLab/Jenkins）
+      firewalld:
+        port: "{{ item.port }}/{{ item.protocol }}"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      loop:
+        - { port: "{{ gitlab_port }}", protocol: "tcp" }
+        - { port: "{{ jenkins_port }}", protocol: "tcp" }
+        - { port: "443", protocol: "tcp" }
+        - { port: "80", protocol: "tcp" }
+
+    - name: 配置CI/CD服务防火墙（Harbor）
+      firewalld:
+        port: "{{ harbor_port }}/tcp"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      when: install_harbor | default(false) | bool
+
+    # 9. 配置SSL证书
+    - name: 配置SSL证书
+      shell: |
+        certbot --nginx -d {{ ansible_default_ipv4.address }} --non-interactive --agree-tos --email admin@{{ ansible_domain }}
+      when: enable_tls | default(false)
+
+  handlers:
+    - name: restart redis
+      systemd:
+        name: redis
+        state: restarted
+
+    - name: reconfigure gitlab
+      shell: gitlab-ctl reconfigure
+
+    - name: restart jenkins
+      systemd:
+        name: jenkins
+        state: restarted
+
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted
+
+- name: 配置Kubernetes CI/CD
+  hosts: control_nodes
+  become: yes
+  gather_facts: yes
+  vars:
+    cicd_namespace: "cicd"
+    # CI/CD服务配置（需要在显示信息时使用）
+    gitlab_port: 8081
+    jenkins_port: 8080
+    harbor_port: 5000
+    harbor_admin_password: "Harbor12345"
+    install_harbor: true
+
+  tasks:
+    # 1. 创建CI/CD命名空间
+    - name: 创建CI/CD命名空间
+      kubernetes.core.k8s:
+        name: "{{ cicd_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    # 2. 部署GitLab Runner
+    - name: 部署GitLab Runner
+      template:
+        src: ../templates/gitlab-runner.yaml.j2
+        dest: /tmp/gitlab-runner.yaml
+        mode: '0644'
+
+    - name: 应用GitLab Runner配置
+      shell: kubectl apply -f /tmp/gitlab-runner.yaml
+
+    # 3. 部署Jenkins Agent
+    - name: 部署Jenkins Agent
+      template:
+        src: ../templates/jenkins-agent.yaml.j2
+        dest: /tmp/jenkins-agent.yaml
+        mode: '0644'
+
+    - name: 应用Jenkins Agent配置
+      shell: kubectl apply -f /tmp/jenkins-agent.yaml
+
+    # 4. 配置CI/CD流水线
+    - name: 创建CI/CD流水线配置
+      template:
+        src: ../templates/pipeline-config.yaml.j2
+        dest: /tmp/pipeline-config.yaml
+        mode: '0644'
+
+    - name: 应用CI/CD流水线配置
+      shell: kubectl apply -f /tmp/pipeline-config.yaml
+
+    # 5. 配置RBAC
+    - name: 配置CI/CD RBAC
+      template:
+        src: ../templates/cicd-rbac.yaml.j2
+        dest: /tmp/cicd-rbac.yaml
+        mode: '0644'
+
+    - name: 应用CI/CD RBAC配置
+      shell: kubectl apply -f /tmp/cicd-rbac.yaml
+
+  post_tasks:
+    - name: 显示CI/CD服务信息
+      debug:
+        msg:
+          - "CI/CD系统部署完成"
+          - "GitLab: http://{{ ansible_default_ipv4.address }}:{{ gitlab_port }}"
+          - "Jenkins: http://{{ ansible_default_ipv4.address }}:{{ jenkins_port }}"
+          - "默认GitLab用户名/密码: root/root"
+          - "默认Jenkins用户名/密码: admin/admin"
+
+    - name: 显示Harbor服务信息
+      debug:
+        msg:
+          - "Harbor: http://{{ ansible_default_ipv4.address }}:{{ harbor_port }}"
+          - "默认Harbor用户名/密码: admin/{{ harbor_admin_password }}"
+      when: install_harbor | default(false) | bool

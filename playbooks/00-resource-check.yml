@@ -1,0 +1,174 @@
+---
+# 系统资源检查（部署前验证）
+# 确保系统有足够资源运行所有服务
+- name: 系统资源预检查
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars:
+    # 单节点部署最低要求
+    min_required_memory_mb: 8192   # 8GB
+    min_required_disk_gb: 50        # 50GB
+    min_required_cpu_cores: 4       # 4核
+    
+    # 推荐配置
+    recommended_memory_mb: 12288    # 12GB
+    recommended_disk_gb: 100        # 100GB
+    recommended_cpu_cores: 8        # 8核
+
+  tasks:
+    - name: 检查系统内存
+      set_fact:
+        total_memory_mb: "{{ ansible_memtotal_mb | int }}"
+        free_memory_mb: "{{ ansible_memfree_mb | int }}"
+
+    - name: 检查磁盘空间
+      set_fact:
+        root_disk_total_gb: "{{ (ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_total') | first / 1024 / 1024 / 1024) | round(2) }}"
+        root_disk_free_gb: "{{ (ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first / 1024 / 1024 / 1024) | round(2) }}"
+
+    - name: 检查CPU核心数
+      set_fact:
+        total_cpu_cores: "{{ ansible_processor_vcpus }}"
+
+    - name: 检查系统负载
+      command: uptime
+      register: system_uptime
+      changed_when: false
+
+    - name: 显示资源信息
+      debug:
+        msg:
+          - "=========================================="
+          - "系统资源检查"
+          - "=========================================="
+          - "主机: {{ inventory_hostname }} ({{ ansible_default_ipv4.address }})"
+          - ""
+          - "CPU核心数:"
+          - "  当前: {{ total_cpu_cores }} 核"
+          - "  最低要求: {{ min_required_cpu_cores }} 核"
+          - "  推荐: {{ recommended_cpu_cores }} 核"
+          - "  状态: {% if total_cpu_cores | int >= recommended_cpu_cores %}✓ 优秀{% elif total_cpu_cores | int >= min_required_cpu_cores %}⚠ 达标{% else %}✗ 不足{% endif %}"
+          - ""
+          - "内存:"
+          - "  总内存: {{ total_memory_mb }} MB"
+          - "  可用内存: {{ free_memory_mb }} MB"
+          - "  最低要求: {{ min_required_memory_mb }} MB"
+          - "  推荐: {{ recommended_memory_mb }} MB"
+          - "  状态: {% if total_memory_mb | int >= recommended_memory_mb %}✓ 优秀{% elif total_memory_mb | int >= min_required_memory_mb %}⚠ 达标{% else %}✗ 不足{% endif %}"
+          - ""
+          - "磁盘空间 (/):"
+          - "  总容量: {{ root_disk_total_gb }} GB"
+          - "  可用空间: {{ root_disk_free_gb }} GB"
+          - "  最低要求: {{ min_required_disk_gb }} GB"
+          - "  推荐: {{ recommended_disk_gb }} GB"
+          - "  状态: {% if root_disk_free_gb | float >= recommended_disk_gb %}✓ 优秀{% elif root_disk_free_gb | float >= min_required_disk_gb %}⚠ 达标{% else %}✗ 不足{% endif %}"
+          - ""
+          - "系统负载:"
+          - "  {{ system_uptime.stdout }}"
+          - "=========================================="
+
+    - name: 检查是否满足最低要求
+      set_fact:
+        resource_check_passed: >-
+          {{
+            (total_cpu_cores | int >= min_required_cpu_cores | int) and
+            (total_memory_mb | int >= min_required_memory_mb | int) and
+            (root_disk_free_gb | float >= min_required_disk_gb | float)
+          }}
+        resource_is_optimal: >-
+          {{
+            (total_cpu_cores | int >= recommended_cpu_cores | int) and
+            (total_memory_mb | int >= recommended_memory_mb | int) and
+            (root_disk_free_gb | float >= recommended_disk_gb | float)
+          }}
+
+    - name: 断言满足最低资源要求
+      assert:
+        that:
+          - total_cpu_cores | int >= min_required_cpu_cores | int
+          - total_memory_mb | int >= min_required_memory_mb | int
+          - root_disk_free_gb | float >= min_required_disk_gb | float
+        fail_msg: |
+          ❌ 系统资源不足，无法满足最低要求！
+          
+          当前资源：
+            CPU: {{ total_cpu_cores }} 核 (需要至少 {{ min_required_cpu_cores }} 核)
+            内存: {{ total_memory_mb }} MB (需要至少 {{ min_required_memory_mb }} MB)
+            磁盘: {{ root_disk_free_gb }} GB (需要至少 {{ min_required_disk_gb }} GB)
+          
+          解决方案：
+          1. 增加虚拟机资源配置（推荐）
+             - CPU: {{ recommended_cpu_cores }} 核
+             - 内存: {{ recommended_memory_mb }} MB ({{ (recommended_memory_mb / 1024) | round }}GB)
+             - 磁盘: {{ recommended_disk_gb }} GB
+          
+          2. 或者使用多节点部署，分散资源压力
+          
+          3. 或者禁用部分服务：
+             - Harbor (镜像仓库，可选)
+             - 监控系统 (可后续添加)
+             - Jenkins (如果只用GitLab CI)
+          
+          不建议在资源不足的情况下继续部署！
+        success_msg: "✓ 资源检查通过（满足最低要求）"
+
+    - name: 资源优化建议
+      debug:
+        msg: |
+          ========================================
+          ⚠️  资源配置建议
+          ========================================
+          
+          当前配置接近最低要求，建议优化：
+          
+          {% if total_cpu_cores | int < recommended_cpu_cores %}
+          CPU建议：
+            当前: {{ total_cpu_cores }} 核
+            推荐: {{ recommended_cpu_cores }} 核
+            影响: CPU不足会导致服务响应缓慢，编译/构建任务耗时长
+          {% endif %}
+          
+          {% if total_memory_mb | int < recommended_memory_mb %}
+          内存建议：
+            当前: {{ total_memory_mb }} MB ({{ (total_memory_mb / 1024) | round(1) }}GB)
+            推荐: {{ recommended_memory_mb }} MB ({{ (recommended_memory_mb / 1024) | round }}GB)
+            影响: 内存不足可能导致OOM，GitLab/PostgreSQL被杀死
+          {% endif %}
+          
+          {% if root_disk_free_gb | float < recommended_disk_gb %}
+          磁盘建议：
+            当前: {{ root_disk_free_gb }} GB
+            推荐: {{ recommended_disk_gb }} GB
+            影响: 磁盘不足会导致日志、镜像、备份无空间
+          {% endif %}
+          
+          优化措施：
+          1. 配置swap（如果内存紧张）
+             sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
+             sudo chmod 600 /swapfile && sudo mkswap /swapfile
+             sudo swapon /swapfile
+          
+          2. 配置日志轮转（避免日志占满磁盘）
+             已在playbook中配置
+          
+          3. 定期清理Docker镜像和容器
+             docker system prune -a -f --volumes
+          
+          4. 监控资源使用
+             watch -n 5 'free -h && df -h'
+          
+          ========================================
+      when: not (resource_is_optimal | bool)
+
+    - name: 显示最终状态
+      debug:
+        msg: |
+          {% if resource_is_optimal | bool %}
+          ✓ 系统资源配置优秀，可以顺利部署所有服务！
+          {% elif resource_check_passed | bool %}
+          ⚠ 系统资源满足最低要求，可以继续部署，但建议监控资源使用情况。
+          {% else %}
+          ✗ 系统资源不足，建议升级后再部署。
+          {% endif %}
+

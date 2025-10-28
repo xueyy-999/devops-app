@@ -1,0 +1,231 @@
+---
+# 通用系统配置 - CentOS 9 基础环境准备
+- name: 配置所有节点基础环境
+  hosts: all
+  become: yes
+  gather_facts: yes
+  vars:
+    # 系统配置
+    timezone: "Asia/Shanghai"
+    ntp_servers:
+      - "ntp.aliyun.com"
+      - "time.windows.com"
+    
+    # 防火墙配置
+    firewall_ports:
+      - { port: "22", protocol: "tcp", state: "enabled" }
+      - { port: "80", protocol: "tcp", state: "enabled" }
+      - { port: "443", protocol: "tcp", state: "enabled" }
+      - { port: "6443", protocol: "tcp", state: "enabled" }
+      - { port: "2379-2380", protocol: "tcp", state: "enabled" }
+      - { port: "10250-10252", protocol: "tcp", state: "enabled" }
+      - { port: "30000-32767", protocol: "tcp", state: "enabled" }
+    
+    # 系统优化参数
+    sysctl_params:
+      net.bridge.bridge-nf-call-iptables: 1
+      net.bridge.bridge-nf-call-ip6tables: 1
+      net.ipv4.ip_forward: 1
+      net.ipv4.conf.all.forwarding: 1
+      net.ipv6.conf.all.forwarding: 1
+      vm.swappiness: 0
+      vm.overcommit_memory: 1
+      vm.panic_on_oom: 0
+      kernel.panic: 10
+      kernel.panic_on_oops: 1
+
+  tasks:
+    # 1. 更新系统包（排除Kubernetes相关包）
+    - name: 更新系统包
+      dnf:
+        name: "*"
+        state: latest
+        update_cache: yes
+        exclude:
+          - kubelet
+          - kubeadm
+          - kubectl
+          - kubernetes-cni
+      register: update_result
+      retries: 3
+      delay: 10
+      ignore_errors: yes  # 如果更新失败不中断部署
+
+    # 2. 安装基础软件包
+    - name: 安装基础软件包
+      dnf:
+        name:
+          - curl
+          - wget
+          - vim
+          - htop
+          - net-tools
+          - bind-utils
+          - telnet
+          - tcpdump
+          - lsof
+          - rsync
+          - git
+          - unzip
+          - jq
+          - yum-utils
+          - device-mapper-persistent-data
+          - lvm2
+        state: present
+
+    # 3. 配置时区
+    - name: 设置系统时区
+      timezone:
+        name: "{{ timezone }}"
+
+    # 4. 配置NTP时间同步
+    - name: 安装chrony
+      dnf:
+        name: chrony
+        state: present
+
+    - name: 配置chrony
+      template:
+        src: ../templates/chrony.conf.j2
+        dest: /etc/chrony.conf
+        backup: yes
+      notify: restart chronyd
+
+    - name: 启动并启用chronyd服务
+      systemd:
+        name: chronyd
+        state: started
+        enabled: yes
+
+    # 5. 配置防火墙
+    - name: 安装firewalld
+      dnf:
+        name: firewalld
+        state: present
+
+    - name: 启动并启用firewalld
+      systemd:
+        name: firewalld
+        state: started
+        enabled: yes
+
+    - name: 配置防火墙端口
+      firewalld:
+        port: "{{ item.port }}/{{ item.protocol }}"
+        permanent: yes
+        state: "{{ item.state }}"
+        immediate: yes
+      loop: "{{ firewall_ports }}"
+
+    # 6. 禁用SELinux
+    - name: 检查SELinux状态
+      command: getenforce
+      register: selinux_status
+      changed_when: false
+
+    - name: 禁用SELinux
+      selinux:
+        state: disabled
+      when: selinux_status.stdout != "Disabled"
+
+    - name: 重启系统以应用SELinux更改
+      reboot:
+        msg: "重启系统以应用SELinux更改"
+        connect_timeout: 5
+        reboot_timeout: 600
+        pre_reboot_delay: 0
+        post_reboot_delay: 30
+      when: selinux_status.stdout != "Disabled"
+
+    # 7. 配置系统内核参数
+    - name: 配置系统内核参数
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      loop: "{{ sysctl_params | dict2items }}"
+
+    - name: 持久化内核参数
+      lineinfile:
+        path: /etc/sysctl.conf
+        line: "{{ item.key }} = {{ item.value }}"
+        regexp: "^{{ item.key | regex_escape() }}"
+        state: present
+      loop: "{{ sysctl_params | dict2items }}"
+
+    # 8. 配置系统限制
+    - name: 配置系统资源限制
+      pam_limits:
+        domain: "*"
+        limit_type: "{{ item.type }}"
+        limit_item: "{{ item.item }}"
+        value: "{{ item.value }}"
+      loop:
+        - { type: "soft", item: "nofile", value: "65536" }
+        - { type: "hard", item: "nofile", value: "65536" }
+        - { type: "soft", item: "nproc", value: "65536" }
+        - { type: "hard", item: "nproc", value: "65536" }
+
+    # 9. 优化系统性能
+    - name: 配置系统性能优化
+      blockinfile:
+        path: /etc/security/limits.conf
+        block: |
+          # Kubernetes性能优化
+          * soft nofile 65536
+          * hard nofile 65536
+          * soft nproc 65536
+          * hard nproc 65536
+          * soft memlock unlimited
+          * hard memlock unlimited
+
+    # 10. 创建必要的目录
+    - name: 创建系统目录
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /opt/kubernetes
+        - /var/lib/kubernetes
+        - /etc/kubernetes
+        - /var/log/kubernetes
+
+    # 11. 配置SSH
+    - name: 配置SSH
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regexp: "^#?PermitRootLogin", line: "PermitRootLogin yes" }
+        - { regexp: "^#?PasswordAuthentication", line: "PasswordAuthentication yes" }
+        - { regexp: "^#?PubkeyAuthentication", line: "PubkeyAuthentication yes" }
+      notify: restart sshd
+
+    # 12. 配置主机名解析
+    - name: 配置主机名解析
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ hostvars[item].ansible_host }} {{ item }}"
+        state: present
+      loop: "{{ ansible_play_hosts }}"
+      when: hostvars[item].ansible_host is defined
+
+  handlers:
+    - name: restart chronyd
+      systemd:
+        name: chronyd
+        state: restarted
+
+    - name: restart sshd
+      systemd:
+        name: sshd
+        state: restarted
+
+  post_tasks:
+    - name: 验证系统配置
+      debug:
+        msg: "节点 {{ inventory_hostname }} 基础环境配置完成"
