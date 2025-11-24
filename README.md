@@ -73,15 +73,39 @@
 
 ## 🚀 快速开始
 
-### 前置要求
+### 🎯 两种部署方式
 
-#### 硬件要求（单节点）
-- **CPU**: 最少4核，推荐8核
-- **内存**: 最少8GB，推荐16GB
-- **磁盘**: 最少50GB，推荐100GB
+#### 方式一：Docker Compose（推荐用于演示和开发）
 
-#### 软件要求
+**前置要求**:
+- Docker Desktop 已安装并运行
+- 至少 8GB 内存
+- 至少 20GB 磁盘空间
+
+**一键启动**:
+```powershell
+# Windows用户
+.\一键启动-完整演示.ps1
+
+# Linux/Mac用户
+docker compose up -d
+cd demo-app && docker-compose up -d
+```
+
+**访问服务**:
+- **示例应用**: http://localhost:8888 ⭐ 主要演示
+- **Prometheus**: http://localhost:9090
+- **Grafana**: http://localhost:3000 (admin/admin123)
+- **GitLab**: http://localhost (root/gitlab123456)
+- **Jenkins**: http://localhost:8080
+- **Registry**: http://localhost:5000
+
+#### 方式二：Ansible部署（用于生产环境）
+
+**前置要求**:
 - CentOS 9 Stream
+- 最少 8GB 内存，推荐 16GB
+- 最少 50GB 磁盘空间
 - Python 3.6+
 - Ansible 2.9+
 
@@ -199,12 +223,14 @@ chmod +x scripts/gitlab-diagnosis.sh
 
 | 服务 | 地址 | 默认账号 |
 |------|------|---------|
+| **示例应用** | `http://localhost:8888` | 无需认证 ⭐ |
+| **后端API** | `http://localhost:5001` | 无需认证 |
 | Kubernetes Dashboard | `http://your-ip:30000` | 见部署日志 |
-| GitLab | `http://your-ip/` | root / 见 `/etc/gitlab/initial_root_password` |
-| Jenkins | `http://your-ip:8080` | admin / 见部署日志 |
-| Harbor | `http://your-ip:5000` | admin / Harbor12345 |
-| Prometheus | `http://your-ip:9090` | 无需认证 |
-| Grafana | `http://your-ip:3000` | admin / 见部署日志 |
+| GitLab | `http://localhost` | root / gitlab123456 |
+| Jenkins | `http://localhost:8080` | admin / 见部署日志 |
+| Registry | `http://localhost:5000` | 无需认证 |
+| Prometheus | `http://localhost:9090` | 无需认证 |
+| Grafana | `http://localhost:3000` | admin / admin123 |
 
 ## 🛠️ 维护操作
 
@@ -240,29 +266,151 @@ docker logs grafana
 
 ```
 demo-devops-app/
-├── ansible.cfg                 # Ansible配置
-├── inventory/                  # 主机清单
-│   ├── hosts.yml              # 多节点配置
-│   └── single-node.yml        # 单节点配置
-├── playbooks/                  # Ansible playbooks
-│   ├── 00-selinux-check.yml   # SELinux检查
-│   ├── 00-resource-check.yml  # 资源检查
-│   ├── 01-common-setup.yml    # 基础环境
-│   ├── 02-docker-setup.yml    # Docker安装
-│   ├── 03-kubernetes-fixed.yml # K8s集群
-│   ├── 04-monitoring-setup.yml # 监控系统
-│   ├── 05-cicd-setup.yml      # CI/CD系统
-│   ├── 06-application-deploy.yml # 应用部署
-│   └── 07-verification.yml    # 验证脚本
-├── templates/                  # Jinja2模板
-├── scripts/                    # 辅助脚本
-│   ├── gitlab-diagnosis.sh    # GitLab诊断
-│   ├── health-check.sh        # 健康检查
-│   └── backup.sh              # 备份脚本
-├── docs/                       # 文档
-├── quick-fix-gitlab-502.sh    # 502快速修复
-└── deploy-single.sh           # 单节点部署脚本
+├── ansible.cfg                      # Ansible配置
+├── docker-compose.yml               # 平台服务配置
+├── site.yml                         # 完整部署脚本
+├── 一键启动-完整演示.ps1            # 一键启动脚本 ⭐
+├── 启动平台.ps1                     # 平台启动脚本
+├── 演示指南-答辩专用.md             # 答辩演示指南 ⭐
+├── 项目完善总结.md                  # 项目总结
+├── inventory/                       # 主机清单
+│   ├── hosts.yml                   # 多节点配置
+│   └── single-node.yml             # 单节点配置
+├── playbooks/                       # Ansible playbooks
+│   ├── 00-selinux-check.yml        # SELinux检查
+│   ├── 00-resource-check.yml       # 资源检查
+│   ├── 01-common-setup.yml         # 基础环境
+│   ├── 02-docker-setup.yml         # Docker安装
+│   ├── 03-kubernetes-fixed.yml     # K8s集群
+│   ├── 04-monitoring-setup.yml     # 监控系统
+│   ├── 05-cicd-setup.yml           # CI/CD系统
+│   ├── 06-application-deploy.yml   # 应用部署
+│   └── 07-verification.yml         # 验证脚本
+├── demo-app/                        # 示例应用 ⭐
+│   ├── backend/                    # Flask后端
+│   │   ├── app.py
+│   │   ├── requirements.txt
+│   │   └── Dockerfile
+│   ├── frontend/                   # 前端
+│   │   ├── index.html
+│   │   ├── style.css
+│   │   ├── app.js
+│   │   ├── nginx.conf
+│   │   └── Dockerfile
+│   ├── k8s/                        # Kubernetes配置
+│   │   ├── namespace.yaml
+│   │   ├── postgres-deployment.yaml
+│   │   ├── redis-deployment.yaml
+│   │   ├── backend-deployment.yaml
+│   │   ├── frontend-deployment.yaml
+│   │   └── deploy-all.sh
+│   ├── .gitlab-ci.yml              # GitLab CI配置
+│   ├── Jenkinsfile                 # Jenkins Pipeline
+│   ├── docker-compose.yml          # 应用配置
+│   └── README.md                   # 应用文档
+├── scripts/                         # 脚本工具
+│   ├── verify-platform.sh          # 平台验证(Linux)
+│   ├── verify-platform.ps1         # 平台验证(Windows) ⭐
+│   ├── test-cicd-pipeline.sh       # CI/CD测试
+│   ├── gitlab-diagnosis.sh         # GitLab诊断
+│   ├── health-check.sh             # 健康检查
+│   └── backup.sh                   # 备份脚本
+├── templates/                       # Jinja2模板
+└── docs/                            # 文档
 ```
+
+## 🎯 示例应用演示
+
+本项目包含一个完整的三层架构示例应用，用于演示CI/CD流程：
+
+### 应用架构
+- **前端**: HTML/CSS/JavaScript + Nginx
+- **后端**: Flask REST API
+- **数据库**: PostgreSQL
+- **缓存**: Redis
+
+### 功能特性
+- ✅ 实时健康检查
+- ✅ 留言板功能
+- ✅ 统计信息展示
+- ✅ 响应式设计
+
+### 快速体验
+```powershell
+# 启动示例应用
+cd demo-app
+docker-compose up -d
+
+# 访问应用
+# http://localhost:8888
+```
+
+### CI/CD流程演示
+```bash
+# 测试完整的CI/CD流程
+bash scripts/test-cicd-pipeline.sh
+```
+
+详细文档请查看: [demo-app/README.md](demo-app/README.md)
+
+---
+
+## 🔍 验证和测试
+
+### 平台验证
+```powershell
+# Windows
+.\scripts\verify-platform.ps1
+
+# Linux/Mac
+bash scripts/verify-platform.sh
+```
+
+### CI/CD测试
+```bash
+# 测试完整的CI/CD流水线
+bash scripts/test-cicd-pipeline.sh
+```
+
+### 健康检查
+```bash
+# 检查所有服务健康状态
+bash scripts/health-check.sh
+```
+
+---
+
+## 🎓 答辩演示
+
+### 演示准备
+1. 阅读 [演示指南-答辩专用.md](演示指南-答辩专用.md)
+2. 运行一键启动脚本
+3. 验证所有服务正常
+4. 准备演示数据
+
+### 快速启动演示环境
+```powershell
+# 一键启动所有服务
+.\一键启动-完整演示.ps1
+```
+
+### 演示流程
+1. **项目介绍** (3分钟)
+2. **核心组件演示** (8分钟)
+   - 监控系统 (Prometheus + Grafana)
+   - CI/CD系统 (GitLab + Jenkins)
+   - 容器仓库 (Registry)
+3. **示例应用演示** (5分钟)
+   - 应用功能展示
+   - API测试
+4. **CI/CD流程演示** (4分钟)
+   - 代码提交
+   - 自动构建
+   - 自动部署
+
+详细演示脚本请查看: [演示指南-答辩专用.md](演示指南-答辩专用.md)
+
+---
 
 ## 🤝 贡献
 
@@ -299,8 +447,19 @@ demo-devops-app/
 如果遇到问题：
 
 1. 查看[故障排查文档](IMMEDIATE_FIX_GUIDE.md)
-2. 运行诊断脚本：`./scripts/gitlab-diagnosis.sh`
-3. 提交[Issue](https://github.com/xueyy-999/demo-devops-app/issues)
+2. 查看[演示指南](演示指南-答辩专用.md)中的故障应急处理
+3. 运行诊断脚本：`./scripts/gitlab-diagnosis.sh`
+4. 运行验证脚本：`.\scripts\verify-platform.ps1`
+5. 提交[Issue](https://github.com/xueyy-999/demo-devops-app/issues)
+
+## 📚 相关文档
+
+- [快速启动指南](快速启动指南.md)
+- [演示指南-答辩专用](演示指南-答辩专用.md) ⭐
+- [项目完善总结](项目完善总结.md)
+- [示例应用文档](demo-app/README.md)
+- [故障排查指南](IMMEDIATE_FIX_GUIDE.md)
+- [技术栈详解](技术栈详解.md)
 
 ## ⭐ Star历史
 

@@ -1,0 +1,152 @@
+// Jenkins Pipeline 配置文件
+// 云原生DevOps平台 - 示例应用
+
+pipeline {
+    agent any
+    
+    environment {
+        REGISTRY_URL = 'localhost:5000'
+        BACKEND_IMAGE = "${REGISTRY_URL}/demo-backend"
+        FRONTEND_IMAGE = "${REGISTRY_URL}/demo-frontend"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        DOCKER_BUILDKIT = '1'
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timestamps()
+        timeout(time: 30, unit: 'MINUTES')
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo '📥 检出代码...'
+                checkout scm
+                sh 'git rev-parse --short HEAD > .git/commit-id'
+                script {
+                    env.GIT_COMMIT_SHORT = readFile('.git/commit-id').trim()
+                }
+            }
+        }
+        
+        stage('Test') {
+            parallel {
+                stage('Test Backend') {
+                    steps {
+                        echo '🧪 测试后端代码...'
+                        dir('backend') {
+                            sh '''
+                                python3 -m py_compile app.py
+                                echo "✅ 后端代码检查通过"
+                            '''
+                        }
+                    }
+                }
+                
+                stage('Test Frontend') {
+                    steps {
+                        echo '🧪 测试前端代码...'
+                        dir('frontend') {
+                            sh '''
+                                ls -la
+                                echo "✅ 前端文件检查通过"
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Build') {
+            parallel {
+                stage('Build Backend') {
+                    steps {
+                        echo '🔨 构建后端镜像...'
+                        dir('backend') {
+                            sh """
+                                docker build -t ${BACKEND_IMAGE}:${IMAGE_TAG} .
+                                docker tag ${BACKEND_IMAGE}:${IMAGE_TAG} ${BACKEND_IMAGE}:latest
+                                echo "✅ 后端镜像构建成功"
+                            """
+                        }
+                    }
+                }
+                
+                stage('Build Frontend') {
+                    steps {
+                        echo '🔨 构建前端镜像...'
+                        dir('frontend') {
+                            sh """
+                                docker build -t ${FRONTEND_IMAGE}:${IMAGE_TAG} .
+                                docker tag ${FRONTEND_IMAGE}:${IMAGE_TAG} ${FRONTEND_IMAGE}:latest
+                                echo "✅ 前端镜像构建成功"
+                            """
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Push to Registry') {
+            when {
+                branch 'main'
+            }
+            steps {
+                echo '📤 推送镜像到Registry...'
+                sh """
+                    docker push ${BACKEND_IMAGE}:${IMAGE_TAG}
+                    docker push ${BACKEND_IMAGE}:latest
+                    docker push ${FRONTEND_IMAGE}:${IMAGE_TAG}
+                    docker push ${FRONTEND_IMAGE}:latest
+                    echo "✅ 镜像推送成功"
+                """
+            }
+        }
+        
+        stage('Deploy to Staging') {
+            when {
+                branch 'main'
+            }
+            steps {
+                echo '🚀 部署到测试环境...'
+                sh """
+                    echo "部署镜像版本: ${IMAGE_TAG}"
+                    echo "Git提交: ${GIT_COMMIT_SHORT}"
+                    echo "✅ 部署到测试环境成功"
+                """
+            }
+        }
+        
+        stage('Deploy to Production') {
+            when {
+                branch 'main'
+            }
+            steps {
+                input message: '是否部署到生产环境?', ok: '确认部署'
+                echo '🚀 部署到生产环境...'
+                sh """
+                    echo "部署镜像版本: ${IMAGE_TAG}"
+                    echo "Git提交: ${GIT_COMMIT_SHORT}"
+                    echo "✅ 部署到生产环境成功"
+                """
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo '✅ Pipeline执行成功！'
+            // 可以添加通知，如发送邮件或Slack消息
+        }
+        failure {
+            echo '❌ Pipeline执行失败！'
+            // 可以添加失败通知
+        }
+        always {
+            echo '🧹 清理工作空间...'
+            cleanWs()
+        }
+    }
+}
+

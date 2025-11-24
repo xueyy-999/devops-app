@@ -31,39 +31,39 @@
   tasks:
     # 1. 基础环境配置
     - name: 配置基础环境
-      include: playbooks/01-common-setup.yml
+      include_tasks: playbooks/01-common-setup.yml
       tags: [setup, common]
 
     # 2. Docker安装配置
     - name: 安装Docker
-      include: playbooks/02-docker-setup.yml
+      include_tasks: playbooks/02-docker-setup.yml
       tags: [setup, docker]
 
     # 3. Kubernetes集群部署
     - name: 部署Kubernetes集群
-      include: playbooks/03-kubernetes-fixed.yml
+      include_tasks: playbooks/03-kubernetes-fixed.yml
       tags: [setup, kubernetes]
 
     # 4. 监控系统部署
     - name: 部署监控系统
-      include: playbooks/04-monitoring-setup.yml
+      include_tasks: playbooks/04-monitoring-setup.yml
       tags: [setup, monitoring]
       when: deployment_mode in ['full', 'custom']
 
     # 5. CI/CD系统部署
     - name: 部署CI/CD系统
-      include: playbooks/05-cicd-setup.yml
+      include_tasks: playbooks/05-cicd-setup.yml
       tags: [setup, cicd]
       when: deployment_mode in ['full', 'custom']
 
     # 6. 应用部署
     - name: 部署示例应用
-      include: playbooks/06-application-deploy.yml
+      include_tasks: playbooks/06-application-deploy.yml
       tags: [deploy, application]
 
     # 7. 系统验证
     - name: 验证系统部署
-      include: playbooks/07-verification.yml
+      include_tasks: playbooks/07-verification.yml
       tags: [verify, test]
       when: not skip_verification
 

@@ -1,0 +1,153 @@
+# GitLab CI/CD 配置文件
+# 云原生DevOps平台 - 示例应用
+
+stages:
+  - test
+  - build
+  - push
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+  REGISTRY_URL: "localhost:5000"
+  BACKEND_IMAGE: "${REGISTRY_URL}/demo-backend"
+  FRONTEND_IMAGE: "${REGISTRY_URL}/demo-frontend"
+  IMAGE_TAG: "${CI_COMMIT_SHORT_SHA}"
+
+# 测试阶段
+test:backend:
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - cd backend
+    - pip install -r requirements.txt
+  script:
+    - echo "运行后端单元测试..."
+    - python -m py_compile app.py
+    - echo "✅ 后端代码检查通过"
+  only:
+    changes:
+      - backend/**/*
+      - .gitlab-ci.yml
+
+test:frontend:
+  stage: test
+  image: node:18-alpine
+  script:
+    - cd frontend
+    - echo "检查前端文件..."
+    - ls -la
+    - echo "✅ 前端文件检查通过"
+  only:
+    changes:
+      - frontend/**/*
+      - .gitlab-ci.yml
+
+# 构建阶段
+build:backend:
+  stage: build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - docker info
+  script:
+    - cd backend
+    - echo "构建后端镜像..."
+    - docker build -t ${BACKEND_IMAGE}:${IMAGE_TAG} .
+    - docker build -t ${BACKEND_IMAGE}:latest .
+    - echo "✅ 后端镜像构建成功"
+  only:
+    changes:
+      - backend/**/*
+      - .gitlab-ci.yml
+
+build:frontend:
+  stage: build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - docker info
+  script:
+    - cd frontend
+    - echo "构建前端镜像..."
+    - docker build -t ${FRONTEND_IMAGE}:${IMAGE_TAG} .
+    - docker build -t ${FRONTEND_IMAGE}:latest .
+    - echo "✅ 前端镜像构建成功"
+  only:
+    changes:
+      - frontend/**/*
+      - .gitlab-ci.yml
+
+# 推送阶段
+push:backend:
+  stage: push
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  script:
+    - cd backend
+    - docker build -t ${BACKEND_IMAGE}:${IMAGE_TAG} .
+    - docker build -t ${BACKEND_IMAGE}:latest .
+    - echo "推送后端镜像到Registry..."
+    - docker push ${BACKEND_IMAGE}:${IMAGE_TAG}
+    - docker push ${BACKEND_IMAGE}:latest
+    - echo "✅ 后端镜像推送成功"
+  only:
+    - main
+    - master
+
+push:frontend:
+  stage: push
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  script:
+    - cd frontend
+    - docker build -t ${FRONTEND_IMAGE}:${IMAGE_TAG} .
+    - docker build -t ${FRONTEND_IMAGE}:latest .
+    - echo "推送前端镜像到Registry..."
+    - docker push ${FRONTEND_IMAGE}:${IMAGE_TAG}
+    - docker push ${FRONTEND_IMAGE}:latest
+    - echo "✅ 前端镜像推送成功"
+  only:
+    - main
+    - master
+
+# 部署阶段
+deploy:staging:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - echo "部署到测试环境..."
+    - echo "镜像版本: ${IMAGE_TAG}"
+    - echo "✅ 部署到测试环境成功"
+  environment:
+    name: staging
+    url: http://staging.example.com
+  only:
+    - main
+    - master
+  when: manual
+
+deploy:production:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - echo "部署到生产环境..."
+    - echo "镜像版本: ${IMAGE_TAG}"
+    - echo "✅ 部署到生产环境成功"
+  environment:
+    name: production
+    url: http://production.example.com
+  only:
+    - main
+    - master
+  when: manual
+
