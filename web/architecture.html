@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统架构 - 云原生DevOps平台</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="index.html" class="nav-brand">🚀 DevOps平台</a>
+        <div class="nav-links">
+            <a href="index.html" class="nav-link">服务概览</a>
+            <a href="architecture.html" class="nav-link active">系统架构</a>
+            <a href="pipeline.html" class="nav-link">CI/CD流水线</a>
+            <a href="monitoring.html" class="nav-link">监控体系</a>
+            <a href="about.html" class="nav-link">关于项目</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h1>🏗️ 系统架构设计</h1>
+            <p>基于Kubernetes的高可用微服务架构</p>
+        </div>
+
+        <div class="content-card">
+            <h2>整体架构图</h2>
+            <div class="diagram-placeholder">
+                <svg width="800" height="400" viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Simple SVG Diagram -->
+                    <rect x="50" y="50" width="700" height="300" rx="10" fill="#f8f9fa" stroke="#cbd5e0"
+                        stroke-width="2" />
+                    <text x="400" y="80" text-anchor="middle" font-size="18" fill="#4a5568">Kubernetes Cluster</text>
+
+                    <!-- Nodes -->
+                    <rect x="100" y="120" width="180" height="180" rx="5" fill="#e6fffa" stroke="#38b2ac"
+                        stroke-width="2" />
+                    <text x="190" y="150" text-anchor="middle" fill="#2c7a7b">DevOps Tools</text>
+                    <text x="190" y="180" text-anchor="middle" font-size="12">GitLab</text>
+                    <text x="190" y="200" text-anchor="middle" font-size="12">Jenkins</text>
+                    <text x="190" y="220" text-anchor="middle" font-size="12">Harbor</text>
+
+                    <rect x="310" y="120" width="180" height="180" rx="5" fill="#ebf8ff" stroke="#4299e1"
+                        stroke-width="2" />
+                    <text x="400" y="150" text-anchor="middle" fill="#2b6cb0">App Workloads</text>
+                    <text x="400" y="180" text-anchor="middle" font-size="12">Frontend Pods</text>
+                    <text x="400" y="200" text-anchor="middle" font-size="12">Backend Pods</text>
+                    <text x="400" y="220" text-anchor="middle" font-size="12">Services/Ingress</text>
+
+                    <rect x="520" y="120" width="180" height="180" rx="5" fill="#fff5f5" stroke="#f56565"
+                        stroke-width="2" />
+                    <text x="610" y="150" text-anchor="middle" fill="#c53030">Monitoring</text>
+                    <text x="610" y="180" text-anchor="middle" font-size="12">Prometheus</text>
+                    <text x="610" y="200" text-anchor="middle" font-size="12">Grafana</text>
+                    <text x="610" y="220" text-anchor="middle" font-size="12">Node Exporter</text>
+                </svg>
+            </div>
+            <p>本平台采用分层架构设计，底层基于Kubernetes容器编排引擎，上层集成主流DevOps工具链。通过Namespace隔离不同环境（Dev/Test/Prod），确保资源的安全与隔离。</p>
+        </div>
+
+        <div class="content-card">
+            <h2>核心组件说明</h2>
+            <ul class="feature-list">
+                <li><strong>Kubernetes (K8s):</strong> 作为基础设施底座，提供容器编排、服务发现、负载均衡和自动扩缩容能力。</li>
+                <li><strong>Docker:</strong> 容器运行时，负责镜像的构建与运行，实现应用环境的一致性。</li>
+                <li><strong>Ingress Controller:</strong> 统一流量入口，管理外部访问集群内部服务的路由规则。</li>
+                <li><strong>StorageClass:</strong> 对接底层存储系统（如NFS/Ceph），为有状态应用提供持久化存储。</li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            <p>© 2024 云原生DevOps平台 | 毕业设计项目</p>
+        </div>
+    </div>
+</body>
+
+</html>

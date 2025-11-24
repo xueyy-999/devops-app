@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>监控体系 - 云原生DevOps平台</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="index.html" class="nav-brand">🚀 DevOps平台</a>
+        <div class="nav-links">
+            <a href="index.html" class="nav-link">服务概览</a>
+            <a href="architecture.html" class="nav-link">系统架构</a>
+            <a href="pipeline.html" class="nav-link">CI/CD流水线</a>
+            <a href="monitoring.html" class="nav-link active">监控体系</a>
+            <a href="about.html" class="nav-link">关于项目</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h1>📊 全栈监控体系</h1>
+            <p>基于Prometheus和Grafana的可视化监控</p>
+        </div>
+
+        <div class="content-card">
+            <h2>监控架构</h2>
+            <div class="diagram-placeholder">
+                <svg width="800" height="300" viewBox="0 0 800 300" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Prometheus -->
+                    <rect x="300" y="100" width="200" height="100" rx="10" fill="#e53e3e" opacity="0.1" stroke="#e53e3e"
+                        stroke-width="2" />
+                    <text x="400" y="155" text-anchor="middle" fill="#c53030" font-size="20"
+                        font-weight="bold">Prometheus</text>
+
+                    <!-- Targets -->
+                    <rect x="50" y="50" width="150" height="60" rx="5" fill="#edf2f7" stroke="#cbd5e0" />
+                    <text x="125" y="85" text-anchor="middle" fill="#4a5568">Node Exporter</text>
+
+                    <rect x="50" y="120" width="150" height="60" rx="5" fill="#edf2f7" stroke="#cbd5e0" />
+                    <text x="125" y="155" text-anchor="middle" fill="#4a5568">cAdvisor</text>
+
+                    <rect x="50" y="190" width="150" height="60" rx="5" fill="#edf2f7" stroke="#cbd5e0" />
+                    <text x="125" y="225" text-anchor="middle" fill="#4a5568">Kube State Metrics</text>
+
+                    <!-- Grafana -->
+                    <rect x="600" y="100" width="150" height="100" rx="10" fill="#ed8936" opacity="0.1" stroke="#ed8936"
+                        stroke-width="2" />
+                    <text x="675" y="155" text-anchor="middle" fill="#c05621" font-size="20"
+                        font-weight="bold">Grafana</text>
+
+                    <!-- Arrows -->
+                    <path d="M200 80 L300 130" stroke="#a0aec0" stroke-width="2" marker-end="url(#arrow)" />
+                    <path d="M200 150 L300 150" stroke="#a0aec0" stroke-width="2" marker-end="url(#arrow)" />
+                    <path d="M200 220 L300 170" stroke="#a0aec0" stroke-width="2" marker-end="url(#arrow)" />
+                    <path d="M500 150 L600 150" stroke="#a0aec0" stroke-width="2" marker-end="url(#arrow)" />
+                </svg>
+            </div>
+            <p>监控系统采用 "Pull" 模式，Prometheus 定期从各个 Exporter 拉取指标数据，存储在本地时序数据库中。Grafana 通过 PromQL 查询数据并进行可视化展示。</p>
+        </div>
+
+        <div class="content-card">
+            <h2>监控维度</h2>
+            <ul class="feature-list">
+                <li><strong>集群监控:</strong> 监控 K8s 节点资源使用情况（CPU、内存、磁盘、网络）。</li>
+                <li><strong>容器监控:</strong> 通过 cAdvisor 监控每个 Pod 和容器的运行状态与资源消耗。</li>
+                <li><strong>应用监控:</strong> 监控业务应用的健康状态、请求延迟、错误率等黄金指标。</li>
+                <li><strong>告警通知:</strong> 基于 Alertmanager 实现异常告警，支持邮件、钉钉等多种通知渠道。</li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            <p>© 2024 云原生DevOps平台 | 毕业设计项目</p>
+        </div>
+    </div>
+</body>
+
+</html>

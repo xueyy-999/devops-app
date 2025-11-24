@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CI/CD流水线 - 云原生DevOps平台</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="index.html" class="nav-brand">🚀 DevOps平台</a>
+        <div class="nav-links">
+            <a href="index.html" class="nav-link">服务概览</a>
+            <a href="architecture.html" class="nav-link">系统架构</a>
+            <a href="pipeline.html" class="nav-link active">CI/CD流水线</a>
+            <a href="monitoring.html" class="nav-link">监控体系</a>
+            <a href="about.html" class="nav-link">关于项目</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h1>🔄 CI/CD 流水线</h1>
+            <p>从代码提交到生产部署的全自动化流程</p>
+        </div>
+
+        <div class="content-card">
+            <h2>流水线流程图</h2>
+            <div class="diagram-placeholder">
+                <svg width="800" height="200" viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Flow -->
+                    <path d="M100 100 L700 100" stroke="#cbd5e0" stroke-width="4" stroke-dasharray="10 5" />
+
+                    <!-- Steps -->
+                    <circle cx="100" cy="100" r="40" fill="#fc8181" />
+                    <text x="100" y="105" text-anchor="middle" fill="white" font-weight="bold">Code</text>
+                    <text x="100" y="160" text-anchor="middle" font-size="12">GitLab Push</text>
+
+                    <circle cx="250" cy="100" r="40" fill="#f6ad55" />
+                    <text x="250" y="105" text-anchor="middle" fill="white" font-weight="bold">Build</text>
+                    <text x="250" y="160" text-anchor="middle" font-size="12">Jenkins Build</text>
+
+                    <circle cx="400" cy="100" r="40" fill="#68d391" />
+                    <text x="400" y="105" text-anchor="middle" fill="white" font-weight="bold">Test</text>
+                    <text x="400" y="160" text-anchor="middle" font-size="12">Unit Tests</text>
+
+                    <circle cx="550" cy="100" r="40" fill="#63b3ed" />
+                    <text x="550" y="105" text-anchor="middle" fill="white" font-weight="bold">Push</text>
+                    <text x="550" y="160" text-anchor="middle" font-size="12">Harbor Registry</text>
+
+                    <circle cx="700" cy="100" r="40" fill="#b794f4" />
+                    <text x="700" y="105" text-anchor="middle" fill="white" font-weight="bold">Deploy</text>
+                    <text x="700" y="160" text-anchor="middle" font-size="12">K8s Apply</text>
+                </svg>
+            </div>
+            <p>本平台实现了基于Jenkins Pipeline的声明式流水线。开发人员只需提交代码到GitLab，即可自动触发构建、测试、镜像推送和应用部署的全过程。</p>
+        </div>
+
+        <div class="content-card">
+            <h2>关键步骤详解</h2>
+            <ul class="feature-list">
+                <li><strong>代码提交 (GitLab):</strong> 开发人员推送代码，GitLab Webhook 自动通知 Jenkins。</li>
+                <li><strong>自动构建 (Jenkins):</strong> Jenkins 拉取代码，执行 Maven/NPM 构建命令，生成制品。</li>
+                <li><strong>镜像制作 (Docker):</strong> 基于 Dockerfile 构建容器镜像，并打上版本标签（Tag）。</li>
+                <li><strong>镜像推送 (Harbor):</strong> 将构建好的镜像推送到私有仓库 Harbor 中进行安全存储。</li>
+                <li><strong>应用部署 (Kubernetes):</strong> 更新 K8s Deployment 配置，触发滚动更新，实现零停机发布。</li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            <p>© 2024 云原生DevOps平台 | 毕业设计项目</p>
+        </div>
+    </div>
+</body>
+
+</html>

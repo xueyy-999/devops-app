@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>云原生DevOps平台 - 示例应用</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 云原生DevOps平台</h1>
+            <p class="subtitle">示例应用 - 毕业设计演示</p>
+        </header>
+
+        <div class="status-panel">
+            <h2>系统状态</h2>
+            <div id="status" class="status-grid">
+                <div class="status-item">
+                    <span class="status-label">后端API:</span>
+                    <span id="api-status" class="status-value">检查中...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">数据库:</span>
+                    <span id="db-status" class="status-value">检查中...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Redis:</span>
+                    <span id="redis-status" class="status-value">检查中...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">消息总数:</span>
+                    <span id="message-count" class="status-value">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="message-panel">
+            <h2>留言板</h2>
+            <form id="message-form">
+                <div class="form-group">
+                    <input type="text" id="author" placeholder="你的名字" required>
+                </div>
+                <div class="form-group">
+                    <textarea id="content" placeholder="写下你的留言..." required></textarea>
+                </div>
+                <button type="submit" class="btn-primary">发送留言</button>
+            </form>
+        </div>
+
+        <div class="messages-panel">
+            <h2>最新留言</h2>
+            <div id="messages" class="messages-list">
+                <p class="loading">加载中...</p>
+            </div>
+        </div>
+
+        <footer>
+            <p>云原生DevOps平台毕业设计 | 基于 Kubernetes + GitLab + Jenkins + Prometheus</p>
+            <p class="version">Version 1.0.0 | <span id="timestamp"></span></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+

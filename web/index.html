@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>云原生DevOps平台 - 服务展示</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="index.html" class="nav-brand">🚀 DevOps平台</a>
+        <div class="nav-links">
+            <a href="index.html" class="nav-link active">服务概览</a>
+            <a href="architecture.html" class="nav-link">系统架构</a>
+            <a href="pipeline.html" class="nav-link">CI/CD流水线</a>
+            <a href="monitoring.html" class="nav-link">监控体系</a>
+            <a href="about.html" class="nav-link">关于项目</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h1>🚀 云原生DevOps平台</h1>
+            <p>基于Kubernetes的全自动化DevOps解决方案</p>
+        </div>
+        
+        <div class="services-grid">
+            <div class="service-card" onclick="window.open('http://localhost', '_blank')">
+                <div class="service-icon">🦊</div>
+                <div class="service-name">
+                    <span class="status-indicator status-running"></span>
+                    GitLab
+                </div>
+                <div class="service-desc">代码仓库与版本控制系统，支持CI/CD流水线</div>
+                <div class="service-url">http://localhost</div>
+                <a href="http://localhost" target="_blank" class="service-btn">访问 GitLab</a>
+            </div>
+            
+            <div class="service-card" onclick="window.open('http://localhost:8080', '_blank')">
+                <div class="service-icon">🔧</div>
+                <div class="service-name">
+                    <span class="status-indicator status-running"></span>
+                    Jenkins
+                </div>
+                <div class="service-desc">持续集成/持续部署服务器，自动化构建与部署</div>
+                <div class="service-url">http://localhost:8080</div>
+                <a href="http://localhost:8080" target="_blank" class="service-btn">访问 Jenkins</a>
+            </div>
+            
+            <div class="service-card" onclick="window.open('http://localhost:5000', '_blank')">
+                <div class="service-icon">🐳</div>
+                <div class="service-name">
+                    <span class="status-indicator status-running"></span>
+                    Harbor
+                </div>
+                <div class="service-desc">企业级容器镜像仓库，支持镜像扫描与签名</div>
+                <div class="service-url">http://localhost:5000</div>
+                <a href="http://localhost:5000" target="_blank" class="service-btn">访问 Harbor</a>
+            </div>
+
+            <div class="service-card" onclick="window.open('http://localhost:9090', '_blank')">
+                <div class="service-icon">📊</div>
+                <div class="service-name">
+                    <span class="status-indicator status-running"></span>
+                    Prometheus
+                </div>
+                <div class="service-desc">时序数据库与监控系统，实时采集系统指标</div>
+                <div class="service-url">http://localhost:9090</div>
+                <a href="http://localhost:9090" target="_blank" class="service-btn">访问 Prometheus</a>
+            </div>
+
+            <div class="service-card" onclick="window.open('http://localhost:3000', '_blank')">
+                <div class="service-icon">📈</div>
+                <div class="service-name">
+                    <span class="status-indicator status-running"></span>
+                    Grafana
+                </div>
+                <div class="service-desc">可视化仪表板，展示监控数据与告警信息</div>
+                <div class="service-url">http://localhost:3000</div>
+                <a href="http://localhost:3000" target="_blank" class="service-btn">访问 Grafana</a>
+            </div>
+        </div>
+
+        <div class="credentials">
+            <h3>🔑 默认登录凭据</h3>
+            <div class="cred-item">
+                <strong>GitLab:</strong> root / gitlab123456
+            </div>
+            <div class="cred-item">
+                <strong>Jenkins:</strong> 首次访问需要从容器中获取初始密码
+            </div>
+            <div class="cred-item">
+                <strong>Harbor:</strong> admin / Harbor12345
+            </div>
+            <div class="cred-item">
+                <strong>Grafana:</strong> admin / admin123
+            </div>
+            <div class="cred-item">
+                <strong>Prometheus:</strong> 无需认证
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>💡 提示：首次启动GitLab需要5-10分钟，请耐心等待</p>
+            <p>📚 查看 <a href="../docs/thesis/快速启动指南.md" style="color: white; text-decoration: underline;">快速启动指南</a> 了解更多</p>
+            <p style="margin-top: 20px;">© 2024 云原生DevOps平台 | 毕业设计项目</p>
+        </div>
+    </div>
+
+    <script>
+        // 检查服务状态
+        async function checkServiceStatus() {
+            const services = [
+                { name: 'GitLab', url: 'http://localhost' },
+                { name: 'Jenkins', url: 'http://localhost:8080' },
+                { name: 'Harbor', url: 'http://localhost:5000' },
+                { name: 'Prometheus', url: 'http://localhost:9090' },
+                { name: 'Grafana', url: 'http://localhost:3000' }
+            ];
+
+            console.log('云原生DevOps平台已加载');
+            console.log('服务列表:', services);
+        }
+
+        // 页面加载完成后执行
+        window.addEventListener('load', checkServiceStatus);
+    </script>
+</body>
+</html>

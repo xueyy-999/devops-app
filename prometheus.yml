@@ -1,0 +1,69 @@
+# Prometheus 配置文件
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'devops-platform'
+    environment: 'demo'
+
+# Alertmanager 配置
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# 规则文件
+rule_files:
+  # - "alerts/*.yml"
+
+# 监控目标配置
+scrape_configs:
+  # Prometheus 自身监控
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # Grafana 监控
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+        labels:
+          service: 'grafana'
+
+  # PostgreSQL 监控
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+        labels:
+          service: 'postgres'
+
+  # Redis 监控
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+        labels:
+          service: 'redis'
+
+  # GitLab 监控
+  - job_name: 'gitlab'
+    static_configs:
+      - targets: ['gitlab:80']
+        labels:
+          service: 'gitlab'
+
+  # Jenkins 监控
+  - job_name: 'jenkins'
+    static_configs:
+      - targets: ['jenkins:8080']
+        labels:
+          service: 'jenkins'
+
+  # Harbor 监控
+  - job_name: 'harbor'
+    static_configs:
+      - targets: ['harbor:5000']
+        labels:
+          service: 'harbor'
+
