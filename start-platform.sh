@@ -24,23 +24,35 @@ echo -e "\n🚀 Starting services using Ansible..."
 
 # Option B: Just start the services directly (Faster)
 echo "Starting Systemd services..."
-sudo systemctl start docker postgresql redis nginx jenkins kubelet
+sudo systemctl start postgresql redis nginx jenkins containerd kubelet
 
 echo "Starting GitLab..."
 sudo gitlab-ctl start
 
 echo "Starting Harbor..."
 if [ -d "/opt/harbor" ]; then
-    cd /opt/harbor && sudo docker compose up -d
+    if command -v docker &> /dev/null && sudo systemctl is-active docker >/dev/null 2>&1; then
+        cd /opt/harbor && sudo docker compose up -d
+    else
+        echo "Docker 未运行，跳过 Harbor(基于 docker compose)"
+    fi
 fi
 
 echo "Starting Monitoring..."
-sudo docker start prometheus grafana || true
+if command -v docker &> /dev/null && sudo systemctl is-active docker >/dev/null 2>&1; then
+    sudo docker start prometheus grafana || true
+else
+    echo "Docker 未运行，跳过 Monitoring Containers"
+fi
 
 # 3. Verify Status
 echo -e "\n🔍 Verifying status..."
 if [ -f "scripts/health-check.sh" ]; then
     bash scripts/health-check.sh
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        exit "$rc"
+    fi
 else
     echo "Health check script not found, checking manually..."
     sudo netstat -tuln | grep -E ":80|:443|:8080|:5000|:9090|:3000"

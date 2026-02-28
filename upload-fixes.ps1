@@ -1,7 +1,7 @@
 # GitLab修复文件上传脚本（Windows PowerShell）
 # 使用方法: .\upload-fixes.ps1
 
-$VM_IP = "192.168.76.141"
+$VM_IP = "192.168.76.131"
 $VM_USER = "root"
 $PROJECT_PATH = "/root/cloud-native-devops-platform"
 

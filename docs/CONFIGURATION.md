@@ -161,7 +161,7 @@ all:
   hosts:
     localhost:
       ansible_host: 127.0.0.1
-      node_ip: 192.168.76.141
+      node_ip: 192.168.76.131
 ```
 
 ### Inventory 变量说明

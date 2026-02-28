@@ -38,22 +38,27 @@
         state: absent
       ignore_errors: yes
 
-    # 2. 安装依赖包
-    - name: 安装Docker依赖包
+    # 2. 安装基础依赖包
+    - name: 安装基础依赖包
       dnf:
         name:
           - yum-utils
           - device-mapper-persistent-data
           - lvm2
-          - containerd.io
         state: present
 
-    # 3. 添加Docker仓库
-    - name: 添加Docker官方仓库
+    # 3. 添加Docker仓库 (使用阿里云镜像加速)
+    - name: 添加Docker仓库
       get_url:
-        url: https://download.docker.com/linux/centos/docker-ce.repo
+        url: https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
         dest: /etc/yum.repos.d/docker-ce.repo
         mode: '0644'
+
+    - name: 替换Docker仓库地址为阿里云
+      replace:
+        path: /etc/yum.repos.d/docker-ce.repo
+        regexp: 'https://download.docker.com'
+        replace: 'https://mirrors.aliyun.com/docker-ce'
 
     # 4. 安装Docker CE（不指定版本，让系统自动选择兼容版本）
     - name: 安装Docker CE
@@ -123,7 +128,7 @@
               "https://hub-mirror.c.163.com"
             ],
             "insecure-registries": [
-              "192.168.76.141:5000"
+              "192.168.76.131:5000"
             ]
           }
         dest: /etc/docker/daemon.json

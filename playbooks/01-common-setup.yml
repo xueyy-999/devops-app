@@ -36,20 +36,20 @@
 
   tasks:
     # 1. 更新系统包（排除Kubernetes相关包）
-    - name: 更新系统包
-      dnf:
-        name: "*"
-        state: latest
-        update_cache: yes
-        exclude:
-          - kubelet
-          - kubeadm
-          - kubectl
-          - kubernetes-cni
-      register: update_result
-      retries: 3
-      delay: 10
-      ignore_errors: yes  # 如果更新失败不中断部署
+    # - name: 更新系统包
+    #   dnf:
+    #     name: "*"
+    #     state: latest
+    #     update_cache: yes
+    #     exclude:
+    #       - kubelet
+    #       - kubeadm
+    #       - kubectl
+    #       - kubernetes-cni
+    #   register: update_result
+    #   retries: 3
+    #   delay: 10
+    #   ignore_errors: yes  # 如果更新失败不中断部署
 
     # 2. 安装基础软件包
     - name: 安装基础软件包
@@ -128,14 +128,26 @@
         state: disabled
       when: selinux_status.stdout != "Disabled"
 
-    - name: 重启系统以应用SELinux更改
-      reboot:
-        msg: "重启系统以应用SELinux更改"
-        connect_timeout: 5
-        reboot_timeout: 600
-        pre_reboot_delay: 0
-        post_reboot_delay: 30
+    - name: 提示需要手动重启以应用SELinux更改
+      fail:
+        msg: "【注意】SELinux配置已修改。由于您正在本机执行部署，脚本无法自动重启。请立即手动执行 'reboot' 命令重启虚拟机。重启完成后，请再次运行 './deploy-centos.sh' 继续部署。"
       when: selinux_status.stdout != "Disabled"
+
+    # 6.5 加载内核模块
+    - name: 加载必要的内核模块
+      community.general.modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: 确保开机加载内核模块
+      copy:
+        content: |
+          overlay
+          br_netfilter
+        dest: /etc/modules-load.d/k8s.conf
 
     # 7. 配置系统内核参数
     - name: 配置系统内核参数

@@ -11,11 +11,11 @@ pipeline {
         stage('Build & Push') {
             steps {
                 script {
-                    def imageName = "192.168.76.141:5000/library/demo-app:${BUILD_NUMBER}"
+                    def imageName = "192.168.76.131:5000/library/demo-app:${BUILD_NUMBER}"
                     sh "docker build -t ${imageName} ."
-                    sh "docker login -u admin -p Harbor12345 192.168.76.141:5000"
+                    sh "docker login -u admin -p Harbor12345 192.168.76.131:5000"
                     sh "docker push ${imageName}"
-                    sh "docker push 192.168.76.141:5000/library/demo-app:latest"
+                    sh "docker push 192.168.76.131:5000/library/demo-app:latest"
                 }
             }
         }
@@ -24,7 +24,7 @@ pipeline {
             steps {
                 script {
                     echo "🚀 Starting Deployment..."
-                    def deployImage = "192.168.76.141:5000/library/demo-app:${BUILD_NUMBER}"
+                    def deployImage = "192.168.76.131:5000/library/demo-app:${BUILD_NUMBER}"
                     
                     sh """
 cat <<EOF > k8s.yaml

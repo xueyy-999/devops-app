@@ -3,7 +3,7 @@
 # 云原生DevOps平台健康检查脚本
 # 用于检查系统各个组件的健康状态
 
-set -e
+set -u
 
 # 颜色定义
 RED='\033[0;31m'
@@ -15,6 +15,70 @@ NC='\033[0m' # No Color
 # 日志函数
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+check_kubernetes_api() {
+    set_kubeconfig_if_present
+    if kubectl version --request-timeout=5s >/dev/null 2>&1; then
+        log_success "Kubernetes API 可访问"
+        return 0
+    fi
+    log_error "Kubernetes API 不可访问"
+    return 1
+}
+
+check_kubernetes_nodes_ready() {
+    set_kubeconfig_if_present
+    if ! kubectl get nodes --request-timeout=5s >/dev/null 2>&1; then
+        log_error "无法获取 Kubernetes 节点"
+        return 1
+    fi
+
+    local not_ready
+    not_ready=$(kubectl get nodes --no-headers 2>/dev/null | awk '$2 != "Ready" {print $1}' | tr '\n' ' ')
+    if [ -z "${not_ready// }" ]; then
+        local ready_nodes
+        local total_nodes
+        ready_nodes=$(kubectl get nodes --no-headers 2>/dev/null | awk '$2 == "Ready" {c++} END{print c+0}')
+        total_nodes=$(kubectl get nodes --no-headers 2>/dev/null | wc -l)
+        log_success "Kubernetes节点: $ready_nodes/$total_nodes 就绪"
+        return 0
+    fi
+
+    log_error "存在 NotReady 节点: $not_ready"
+    return 1
+}
+
+check_kubernetes_core_pods() {
+    set_kubeconfig_if_present
+    if ! kubectl -n kube-system get pods --request-timeout=5s >/dev/null 2>&1; then
+        log_error "无法获取 kube-system Pod 状态"
+        return 1
+    fi
+
+    local bad
+    bad=$(kubectl get pods -A --no-headers 2>/dev/null | awk '$4 ~ /(CrashLoopBackOff|ImagePullBackOff|ErrImagePull|Pending|Error)/ {print $1"/"$2":"$4}' | head -n 20)
+    if [ -z "$bad" ]; then
+        log_success "Kubernetes 关键Pod状态正常(无 CrashLoop/Pending/ErrImagePull)"
+        return 0
+    fi
+    log_error "发现异常Pod(最多显示20条):\n$bad"
+    return 1
+}
+
+check_default_storageclass() {
+    set_kubeconfig_if_present
+    if ! kubectl get sc --request-timeout=5s >/dev/null 2>&1; then
+        log_warning "无法获取 StorageClass(可能未安装存储)，跳过"
+        return 0
+    fi
+
+    if kubectl get sc 2>/dev/null | grep -q "(default)"; then
+        log_success "默认 StorageClass 已配置"
+        return 0
+    fi
+    log_warning "未发现默认 StorageClass(可能导致 PVC Pending)"
+    return 0
 }
 
 log_success() {
@@ -29,13 +93,33 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+FAILED=0
+
+record_fail() {
+    FAILED=$((FAILED + 1))
+}
+
+set_kubeconfig_if_present() {
+    if [ -z "${KUBECONFIG:-}" ]; then
+        if [ -f "/etc/kubernetes/admin.conf" ]; then
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+        elif [ -f "$HOME/.kube/config" ]; then
+            export KUBECONFIG=$HOME/.kube/config
+        fi
+    fi
+}
+
 # 检查函数
 check_service() {
     local service_name=$1
-    local service_status=$(systemctl is-active $service_name)
+    local service_status
+    service_status=$(systemctl is-active "$service_name" 2>/dev/null || echo "unknown")
     
     if [ "$service_status" = "active" ]; then
         log_success "$service_name 服务运行正常"
+        return 0
+    elif [ "$service_status" = "unknown" ]; then
+        log_warning "$service_name 服务不存在或无法检测(unknown)，跳过"
         return 0
     else
         log_error "$service_name 服务未运行"
@@ -116,63 +200,65 @@ main() {
     
     # 检查系统基础服务
     log_info "检查系统基础服务..."
-    check_service "chronyd"
-    check_service "firewalld"
+    check_service "chronyd" || record_fail
+    check_service "firewalld" || record_fail
     echo ""
     
     # 检查Docker服务
     log_info "检查Docker服务..."
-    check_service "docker"
-    check_service "containerd"
+    check_service "docker" || true
+    check_service "containerd" || record_fail
     echo ""
     
     # 检查Kubernetes服务
     log_info "检查Kubernetes服务..."
-    check_service "kubelet"
-    check_kubernetes "nodes"
-    check_kubernetes "pods"
-    check_kubernetes "services"
+    check_service "kubelet" || record_fail
+    check_kubernetes_api || record_fail
+    check_kubernetes_nodes_ready || record_fail
+    check_kubernetes_core_pods || record_fail
+    check_kubernetes "services" || record_fail
+    check_default_storageclass || true
     echo ""
     
     # 检查监控服务
     log_info "检查监控服务..."
-    check_service "prometheus"
-    check_service "grafana-server"
-    check_service "alertmanager"
-    check_service "node_exporter"
+    check_service "prometheus" || true
+    check_service "grafana-server" || true
+    check_service "alertmanager" || true
+    check_service "node_exporter" || true
     
     # 检查监控端口
-    check_port "localhost" "9090" "Prometheus"
-    check_port "localhost" "3000" "Grafana"
-    check_port "localhost" "9093" "Alertmanager"
-    check_port "localhost" "9100" "Node Exporter"
+    check_port "localhost" "9090" "Prometheus" || true
+    check_port "localhost" "3000" "Grafana" || true
+    check_port "localhost" "9093" "Alertmanager" || true
+    check_port "localhost" "9100" "Node Exporter" || true
     
     # 检查监控HTTP服务
-    check_http "http://localhost:9090/api/v1/query?query=up" "Prometheus"
-    check_http "http://localhost:3000/api/health" "Grafana"
-    check_http "http://localhost:9093/api/v1/status" "Alertmanager"
+    check_http "http://localhost:9090/api/v1/query?query=up" "Prometheus" || true
+    check_http "http://localhost:3000/api/health" "Grafana" || true
+    check_http "http://localhost:9093/api/v1/status" "Alertmanager" || true
     echo ""
     
     # 检查CI/CD服务
     log_info "检查CI/CD服务..."
-    check_service "gitlab"
-    check_service "jenkins"
-    check_service "harbor"
+    check_service "gitlab" || true
+    check_service "jenkins" || true
+    check_service "harbor" || true
     
     # 检查CI/CD端口
-    check_port "localhost" "80" "GitLab"
-    check_port "localhost" "8080" "Jenkins"
-    check_port "localhost" "80" "Harbor"
+    check_port "localhost" "80" "GitLab" || true
+    check_port "localhost" "8080" "Jenkins" || true
+    check_port "localhost" "80" "Harbor" || true
     
     # 检查CI/CD HTTP服务
-    check_http "http://localhost/api/v4/version" "GitLab"
-    check_http "http://localhost:8080/api/json" "Jenkins"
-    check_http "http://localhost/api/v2.0/systeminfo" "Harbor"
+    check_http "http://localhost/api/v4/version" "GitLab" || true
+    check_http "http://localhost:8080/api/json" "Jenkins" || true
+    check_http "http://localhost/api/v2.0/systeminfo" "Harbor" || true
     echo ""
     
     # 检查应用服务
     log_info "检查应用服务..."
-    check_kubernetes "pods"
+    check_kubernetes "pods" || record_fail
     
     # 检查应用Pod
     if kubectl get pods -n production -l app=web-app >/dev/null 2>&1; then
@@ -181,6 +267,7 @@ main() {
         log_success "应用Pod: $app_pods/$total_app_pods 运行中"
     else
         log_error "无法获取应用Pod状态"
+        record_fail
     fi
     
     # 检查应用服务
@@ -189,6 +276,7 @@ main() {
         log_success "应用服务: $app_services 个服务"
     else
         log_error "无法获取应用服务状态"
+        record_fail
     fi
     
     # 检查应用Ingress
@@ -197,6 +285,7 @@ main() {
         log_success "应用Ingress: $app_ingress 个入口"
     else
         log_error "无法获取应用Ingress状态"
+        record_fail
     fi
     echo ""
     
@@ -289,6 +378,12 @@ EOF
     log_success "健康检查完成！"
     log_info "报告已保存到: /tmp/health-check-report.md"
     echo "========================================"
+
+    if [ "$FAILED" -ne 0 ]; then
+        log_error "健康检查存在失败项: $FAILED"
+        exit 1
+    fi
+    exit 0
 }
 
 # 执行主函数

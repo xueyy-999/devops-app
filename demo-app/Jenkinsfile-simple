@@ -1,0 +1,125 @@
+// 简化版 Jenkins Pipeline - 用于演示
+// 直接从服务器本地构建，不需要Git
+
+pipeline {
+    agent any
+
+    environment {
+        REGISTRY_URL = '192.168.76.131:5000'
+        BACKEND_IMAGE = "${REGISTRY_URL}/demo-backend"
+        FRONTEND_IMAGE = "${REGISTRY_URL}/demo-frontend"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        WORKSPACE_DIR = '/root/demo-app'
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timestamps()
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('准备环境') {
+            steps {
+                echo '🚀 开始CI/CD流程...'
+                sh '''
+                    echo "工作目录: ${WORKSPACE_DIR}"
+                    echo "构建编号: ${BUILD_NUMBER}"
+                    echo "Registry: ${REGISTRY_URL}"
+                '''
+            }
+        }
+
+        stage('代码检查') {
+            steps {
+                echo '🔍 检查代码...'
+                sh '''
+                    cd ${WORKSPACE_DIR}
+                    echo "检查后端代码..."
+                    python3 -m py_compile backend/app.py && echo "✅ 后端代码检查通过" || echo "⚠️ 后端代码检查失败"
+
+                    echo "检查前端文件..."
+                    ls -la frontend/ && echo "✅ 前端文件检查通过"
+                '''
+            }
+        }
+
+        stage('构建镜像') {
+            parallel {
+                stage('构建后端镜像') {
+                    steps {
+                        echo '🔨 构建后端Docker镜像...'
+                        sh '''
+                            cd ${WORKSPACE_DIR}/backend
+                            docker build -t ${BACKEND_IMAGE}:${IMAGE_TAG} .
+                            docker tag ${BACKEND_IMAGE}:${IMAGE_TAG} ${BACKEND_IMAGE}:latest
+                            echo "✅ 后端镜像构建成功: ${BACKEND_IMAGE}:${IMAGE_TAG}"
+                        '''
+                    }
+                }
+
+                stage('构建前端镜像') {
+                    steps {
+                        echo '🔨 构建前端Docker镜像...'
+                        sh '''
+                            cd ${WORKSPACE_DIR}/frontend
+                            docker build -t ${FRONTEND_IMAGE}:${IMAGE_TAG} .
+                            docker tag ${FRONTEND_IMAGE}:${IMAGE_TAG} ${FRONTEND_IMAGE}:latest
+                            echo "✅ 前端镜像构建成功: ${FRONTEND_IMAGE}:${IMAGE_TAG}"
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('推送镜像') {
+            steps {
+                echo '📤 推送镜像到Registry...'
+                sh '''
+                    echo "推送后端镜像..."
+                    docker push ${BACKEND_IMAGE}:${IMAGE_TAG}
+                    docker push ${BACKEND_IMAGE}:latest
+                    echo "✅ 后端镜像推送成功"
+
+                    echo "推送前端镜像..."
+                    docker push ${FRONTEND_IMAGE}:${IMAGE_TAG}
+                    docker push ${FRONTEND_IMAGE}:latest
+                    echo "✅ 前端镜像推送成功"
+                '''
+            }
+        }
+
+        stage('验证镜像') {
+            steps {
+                echo '✅ 验证Registry中的镜像...'
+                sh '''
+                    echo "查询Registry中的镜像列表:"
+                    curl -s http://${REGISTRY_URL}/v2/_catalog | python3 -m json.tool
+
+                    echo ""
+                    echo "查询demo-backend镜像标签:"
+                    curl -s http://${REGISTRY_URL}/v2/demo-backend/tags/list | python3 -m json.tool || echo "镜像标签查询失败"
+
+                    echo ""
+                    echo "查询demo-frontend镜像标签:"
+                    curl -s http://${REGISTRY_URL}/v2/demo-frontend/tags/list | python3 -m json.tool || echo "镜像标签查询失败"
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '🎉 Pipeline执行成功！'
+            echo "✅ 后端镜像: ${BACKEND_IMAGE}:${IMAGE_TAG}"
+            echo "✅ 前端镜像: ${FRONTEND_IMAGE}:${IMAGE_TAG}"
+            echo "✅ 镜像已推送到Registry: ${REGISTRY_URL}"
+        }
+        failure {
+            echo '❌ Pipeline执行失败，请检查日志'
+        }
+        always {
+            echo '🏁 Pipeline执行完成'
+        }
+    }
+}

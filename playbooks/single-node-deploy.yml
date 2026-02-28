@@ -24,7 +24,7 @@
     app_namespace: "production"
     app_name: "web-app"
     app_replicas: 1
-    app_domain: "192.168.76.141"
+    app_domain: "192.168.76.131"
 
   tasks:
     # 1. 基础环境配置

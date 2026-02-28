@@ -25,16 +25,16 @@ try {
     Write-Host "[OK] Showcase page opened!" -ForegroundColor Green
     Write-Host ""
     Write-Host "[Info] 5 Core Services Showcased:" -ForegroundColor Cyan
-    Write-Host "   1. GitLab    - http://192.168.76.141" -ForegroundColor White
-    Write-Host "   2. Jenkins   - http://192.168.76.141:8080" -ForegroundColor White
-    Write-Host "   3. Harbor    - http://192.168.76.141:5000" -ForegroundColor White
-    Write-Host "   4. Prometheus - http://192.168.76.141:9090" -ForegroundColor White
-    Write-Host "   5. Grafana   - http://192.168.76.141:3000" -ForegroundColor White
+    Write-Host "   1. GitLab    - http://192.168.76.131" -ForegroundColor White
+    Write-Host "   2. Jenkins   - http://192.168.76.131:8080" -ForegroundColor White
+    Write-Host "   3. Harbor    - http://192.168.76.131:5000" -ForegroundColor White
+    Write-Host "   4. Prometheus - http://192.168.76.131:9090" -ForegroundColor White
+    Write-Host "   5. Grafana   - http://192.168.76.131:3000" -ForegroundColor White
     Write-Host ""
     Write-Host "[Tip] Tips:" -ForegroundColor Yellow
     Write-Host "   - Click buttons on the page to quickly access services" -ForegroundColor Gray
     Write-Host "   - If services are not deployed, please run the deployment script first" -ForegroundColor Gray
-    Write-Host "   - Ensure server IP is correct (Current: 192.168.76.141)" -ForegroundColor Gray
+    Write-Host "   - Ensure server IP is correct (Current: 192.168.76.131)" -ForegroundColor Gray
     Write-Host ""
     
     # Ask to check service status
@@ -45,11 +45,11 @@ try {
         Write-Host ""
         
         $services = @(
-            @{Name="GitLab"; Url="http://192.168.76.141"},
-            @{Name="Jenkins"; Url="http://192.168.76.141:8080"},
-            @{Name="Harbor"; Url="http://192.168.76.141:5000"},
-            @{Name="Prometheus"; Url="http://192.168.76.141:9090"},
-            @{Name="Grafana"; Url="http://192.168.76.141:3000"}
+            @{Name="GitLab"; Url="http://192.168.76.131"},
+            @{Name="Jenkins"; Url="http://192.168.76.131:8080"},
+            @{Name="Harbor"; Url="http://192.168.76.131:5000"},
+            @{Name="Prometheus"; Url="http://192.168.76.131:9090"},
+            @{Name="Grafana"; Url="http://192.168.76.131:3000"}
         )
         
         foreach ($service in $services) {

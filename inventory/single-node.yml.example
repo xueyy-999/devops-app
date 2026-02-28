@@ -57,7 +57,7 @@ all:
     localhost:
       ansible_host: 127.0.0.1
       # 修改为实际的节点 IP 地址
-      node_ip: 192.168.76.141
+      node_ip: 192.168.76.131
       node_name: localhost
       node_role: master
       # 单节点模式下，节点需要承担所有角色
