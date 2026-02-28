@@ -1,100 +1,100 @@
-# Cloud-Native DevOps Platform
+# Cloud-Native DevOps Platform | 云原生 DevOps 平台
 
-A fully automated cloud-native DevOps platform deployment solution based on Ansible, supporting single-node and multi-node deployments.
+基于 Ansible 的全自动化云原生 DevOps 平台部署方案，支持单节点和多节点部署。
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-CentOS%209-orange.svg)](https://www.centos.org/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.28-blue.svg)](https://kubernetes.io/)
 
-## Overview
+## 项目简介
 
-This project provides a complete cloud-native DevOps platform with automated deployment capabilities:
+本项目提供完整的云原生 DevOps 平台自动化部署能力：
 
-- **Container Orchestration**: Kubernetes 1.28 cluster
-- **Container Runtime**: Docker + Containerd
-- **CI/CD Pipeline**: GitLab + Jenkins + Harbor
-- **Monitoring Stack**: Prometheus + Grafana + Alertmanager
-- **Infrastructure as Code**: Ansible automation
+- **容器编排**：Kubernetes 1.28 集群
+- **容器运行时**：Docker + Containerd
+- **CI/CD 流水线**：GitLab + Jenkins + Harbor
+- **监控告警**：Prometheus + Grafana + Alertmanager
+- **基础设施即代码**：Ansible 自动化部署
 
-## Architecture
+## 架构设计
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                 Cloud-Native DevOps Platform            │
+│               Cloud-Native DevOps Platform              │
 ├─────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │   CI/CD      │  │  Monitoring  │  │ Applications │  │
+│  │   CI/CD      │  │   监控告警   │  │   应用层     │  │
 │  │  GitLab      │  │  Prometheus  │  │  Web Apps    │  │
 │  │  Jenkins     │  │  Grafana     │  │  Microservices│  │
 │  │  Harbor      │  │  Alertmanager│  │  API Gateway │  │
 │  └──────────────┘  └──────────────┘  └──────────────┘  │
 ├─────────────────────────────────────────────────────────┤
-│              Kubernetes Orchestration Layer             │
+│              Kubernetes 容器编排层                       │
 ├─────────────────────────────────────────────────────────┤
-│              Docker/Containerd Runtime                  │
+│              Docker/Containerd 运行时                    │
 ├─────────────────────────────────────────────────────────┤
 │              CentOS 9 Stream                            │
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Tech Stack
+## 技术栈
 
-| Component | Version | Description |
-|-----------|---------|-------------|
-| Kubernetes | 1.28.0 | Container orchestration |
-| Docker | 24.0+ | Container runtime |
-| GitLab | 16.0.0 | Source code management |
-| Jenkins | 2.401+ | CI/CD automation |
-| Harbor | 2.8.0 | Container registry |
-| Prometheus | 2.45+ | Metrics & monitoring |
-| Grafana | 10.0+ | Visualization |
-| Ansible | 2.9+ | Infrastructure automation |
+| 组件 | 版本 | 说明 |
+|------|------|------|
+| Kubernetes | 1.28.0 | 容器编排 |
+| Docker | 24.0+ | 容器运行时 |
+| GitLab | 16.0.0 | 代码仓库 |
+| Jenkins | 2.401+ | CI/CD 服务器 |
+| Harbor | 2.8.0 | 镜像仓库 |
+| Prometheus | 2.45+ | 监控系统 |
+| Grafana | 10.0+ | 可视化仪表盘 |
+| Ansible | 2.9+ | 自动化部署 |
 
-## Quick Start
+## 快速开始
 
-### Option 1: Docker Compose (Development)
+### 方式一：Docker Compose（开发环境）
 
 ```bash
-# Start the platform
+# 启动平台服务
 docker compose up -d
 
-# Start demo application
+# 启动示例应用
 cd demo-app && docker-compose up -d
 ```
 
-**Access Services:**
-- Demo App: http://localhost:8888
-- Prometheus: http://localhost:9090
-- Grafana: http://localhost:3000 (admin/admin123)
-- Jenkins: http://localhost:8080
+**访问地址：**
+- 示例应用：http://localhost:8888
+- Prometheus：http://localhost:9090
+- Grafana：http://localhost:3000 (admin/admin123)
+- Jenkins：http://localhost:8080
 
-### Option 2: Ansible Deployment (Production)
+### 方式二：Ansible 部署（生产环境）
 
-**Prerequisites:**
+**环境要求：**
 - CentOS 9 Stream
-- 8GB+ RAM (16GB recommended)
-- 50GB+ disk space
-- Python 3.6+, Ansible 2.9+
+- 8GB+ 内存（推荐 16GB）
+- 50GB+ 磁盘空间
+- Python 3.6+，Ansible 2.9+
 
-**Deploy:**
+**部署步骤：**
 
 ```bash
-# 1. Clone repository
+# 1. 克隆项目
 git clone https://github.com/xueyy-999/devops-app.git
 cd devops-app
 
-# 2. Install Ansible
+# 2. 安装 Ansible
 ./install-ansible.sh
 
-# 3. Configure inventory
+# 3. 配置主机清单
 cp inventory/single-node.yml.example inventory/single-node.yml
 vim inventory/single-node.yml
 
-# 4. Run deployment
+# 4. 执行部署
 ansible-playbook -i inventory/single-node.yml site.yml
 ```
 
-**Or step-by-step:**
+**分步部署：**
 
 ```bash
 ansible-playbook -i inventory/single-node.yml playbooks/01-common-setup.yml
@@ -104,76 +104,76 @@ ansible-playbook -i inventory/single-node.yml playbooks/04-monitoring-setup.yml
 ansible-playbook -i inventory/single-node.yml playbooks/05-cicd-setup.yml
 ```
 
-## Project Structure
+## 项目结构
 
 ```
 devops-app/
-├── ansible.cfg              # Ansible configuration
-├── docker-compose.yml       # Platform services
-├── Jenkinsfile              # CI/CD pipeline
-├── site.yml                 # Main deployment playbook
-├── inventory/               # Host inventory
+├── ansible.cfg              # Ansible 配置
+├── docker-compose.yml       # 平台服务编排
+├── Jenkinsfile              # CI/CD 流水线
+├── site.yml                 # 主部署脚本
+├── inventory/               # 主机清单
 │   ├── hosts.yml
 │   └── single-node.yml
-├── playbooks/               # Ansible playbooks
+├── playbooks/               # Ansible Playbooks
 │   ├── 01-common-setup.yml
 │   ├── 02-docker-setup.yml
 │   ├── 03-kubernetes-setup.yml
 │   ├── 04-monitoring-setup.yml
 │   └── 05-cicd-setup.yml
-├── demo-app/                # Demo application
-│   ├── backend/             # Flask REST API
-│   ├── frontend/            # Nginx + Static files
-│   ├── k8s/                 # Kubernetes manifests
-│   ├── Jenkinsfile          # App CI/CD pipeline
+├── demo-app/                # 示例应用
+│   ├── backend/             # Flask 后端 API
+│   ├── frontend/            # Nginx 前端
+│   ├── k8s/                 # Kubernetes 配置
+│   ├── Jenkinsfile          # 应用 CI/CD
 │   └── docker-compose.yml
-├── scripts/                 # Utility scripts
+├── scripts/                 # 运维脚本
 │   ├── health-check.sh
 │   ├── backup.sh
 │   └── verify-platform.sh
-├── templates/               # Jinja2 templates
-└── docs/                    # Documentation
+├── templates/               # Jinja2 模板
+└── docs/                    # 文档
 ```
 
-## Demo Application
+## 示例应用
 
-The included demo application demonstrates a complete CI/CD workflow:
+项目包含完整的三层架构示例应用，用于演示 CI/CD 流程：
 
-- **Frontend**: HTML/CSS/JS with Nginx
-- **Backend**: Flask REST API
-- **Database**: PostgreSQL
-- **Cache**: Redis
+- **前端**：HTML/CSS/JS + Nginx
+- **后端**：Flask REST API
+- **数据库**：PostgreSQL
+- **缓存**：Redis
 
 ```bash
 cd demo-app
 docker-compose up -d
-# Access: http://localhost:8888
+# 访问：http://localhost:8888
 ```
 
-## Operations
+## 运维操作
 
 ```bash
-# Health check
+# 健康检查
 ./scripts/health-check.sh
 
-# Backup
+# 数据备份
 ./scripts/backup.sh
 
-# Platform verification
+# 平台验证
 ./scripts/verify-platform.sh
 ```
 
-## Documentation
+## 文档
 
-- [Configuration Guide](docs/CONFIGURATION.md)
-- [Single-Node Deployment](docs/single-node-deployment.md)
-- [Project Structure](docs/PROJECT_STRUCTURE.md)
-- [Contributing](docs/CONTRIBUTING.md)
+- [配置说明](docs/CONFIGURATION.md)
+- [单节点部署](docs/single-node-deployment.md)
+- [项目结构](docs/PROJECT_STRUCTURE.md)
+- [贡献指南](docs/CONTRIBUTING.md)
 
-## License
+## 许可证
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
 
-## Author
+## 作者
 
 **xueyy-999** - [GitHub](https://github.com/xueyy-999)
